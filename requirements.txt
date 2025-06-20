@@ -1,3 +1,6 @@
+# APIs
+fastapi>=0.115.0
+
 # Core database and metadata tools
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
@@ -22,3 +25,4 @@ legacy-cgi>=0.4.0
 
 # Testing
 pytest~=8.0
+uvicorn[standard]
