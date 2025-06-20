@@ -1,6 +1,6 @@
 import csv
 import importlib
-import fetch_otol
+from cladecanvas import fetch_otol
 
 def test_download_and_flatten(tmp_path, monkeypatch):
     # Setup

@@ -1,12 +1,21 @@
+# Core database and metadata tools
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pandas>=2.0
+requests>=2.31
+python-dotenv>=1.1.0
+
 # Core phylo & OTOL
 opentree==1.0.1
-ete3~=3.1
-
-# ETE3 dependencies
+dendropy>=4.6.0
 six>=1.16.0
 numpy>=1.24.0
 lxml>=4.9.0
-dendropy>=4.6.0
+
+# Jupyter notebooks
+notebook
+ipykernel
+matplotlib >=3.7.0
 
 # Back-port stdlib cgi for Python ≥3.13
 legacy-cgi>=0.4.0
