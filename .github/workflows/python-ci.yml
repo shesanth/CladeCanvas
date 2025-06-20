@@ -5,15 +5,13 @@ on: [push, pull_request]
 jobs:
   tests:
     runs-on: ubuntu-latest
-
-    env:
-      SKIP_API_TESTS: "1" # Skip DB dependent tests
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
-      - run: pip install -e .
-      - run: pytest -q
+      - run: python -m venv .venv
+      - run: . .venv/bin/activate && pip install -r requirements.txt
+      - run: . .venv/bin/activate && pip install -e .
+      - name: Run only unit tests (skip @api-marked tests)
+        run: . .venv/bin/activate && pytest -m "not api" -q

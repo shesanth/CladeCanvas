@@ -40,22 +40,135 @@
 
 > You can view actual image previews and Wikipedia links for enriched taxa.
 
+---
+
+### 4. **FastAPI Backend API**
+
+A queryable API for powering the eventual front-end visualization.
+
+#### Core Endpoints
+| Endpoint | Description |
+|----------|-------------|
+| `GET /tree/root` | Get root node |
+| `GET /tree/children/{ott_id}` | Immediate children for lazy tree loading |
+| `GET /tree/subtree/{ott_id}?depth=N` | Subtree of depth `N` for eager loading |
+| `GET /tree/lineage/{ott_id}` | Ancestors from root to this node |
+| `GET /node/{ott_id}` | Metadata for a specific node |
+| `GET /node/bulk?ott_ids=...` | Batch metadata for many nodes |
+| `GET /search?q=...` | Search by name/description |
+
+#### Dev Server
+```bash
+uvicorn cladecanvas.api.main:app --reload
+```
+Then visit:
+- Swagger: http://127.0.0.1:8000/docs
+- ReDoc:   http://127.0.0.1:8000/redoc
+
+#### Example Usage
+
+**Get the root node**
+```http
+GET /tree/root
+```
+_Response:_
+```json
+{
+  "ott_id": 691846,
+  "name": "Metazoa",
+  "parent_ott_id": null,
+  "child_count": 24,
+  "has_metadata": true
+}
+```
+
+**Search for a clade by name**
+```http
+GET /search?q=Eutheria
+```
+_Response:_
+```json
+[
+ {
+    "ott_id": 683263,
+    "common_name": "Eutheria",
+    "description": "clade of therian mammals",
+    "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
+    "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
+    "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
+    "rank": null,
+    "enriched_score": 1
+  },
+]
+```
+
+**Get metadata for a specific node**
+```http
+GET /node/683263
+```
+_Response:_
+```json
+ {
+    "ott_id": 683263,
+    "common_name": "Eutheria",
+    "description": "clade of therian mammals",
+    "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
+    "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
+    "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
+    "rank": null,
+    "enriched_score": 1
+  },
+```
+
+**Get lineage (ancestry) for a node**
+```http
+GET /tree/lineage/683263
+```
+_Response:_
+```json
+{
+  "lineage": [
+    { "ott_id": 691846, "name": "Metazoa" },
+    { "ott_id": 641038, "name": "Eumetazoa" },
+    { "ott_id": 244265, "name": "Mammalia" },
+    { "ott_id": 683263, "name": "Eutheria (in Deuterostomia)" }
+  ]
+}
+```
+
 
 ## How to Run
+
+> **Set the `POSTGRES_URL` environment variable to point to your PostgreSQL instance**
+
+Example:
+```bash
+export POSTGRES_URL=postgresql://username:password@localhost:5432/cladecanvas
+```
+Or on Windows:
+```cmd
+set POSTGRES_URL=postgresql://username:password@localhost:5432/cladecanvas
+```
 
 ### 1. Load the OpenTree structure and initialize the DB
 ```bash
 python -m scripts.fetch_otol
-python -m scripts.populate_db  # loads CSV into PostgreSQL
+python -m scripts.populate_db --limit 0 --max-batches 0 # loads CSV into PostgreSQL
 ```
 
-### 2. Run workers to populate the database in background
-
+### 2. Run workers to populate the database
 ```bash
 python -m scripts.run_workers --workers 8 --limit 100 --loops 100 --sleep 2
 ```
-### 3. View results in notebook
 
+> This will take a long time. There are 2.8M taxa in Metazoa alone, and we respect API limits from Wikidata and Wikipedia.
+
+### 3. Launch API server
+```bash
+uvicorn cladecanvas.api.main:app --reload
+```
+
+### 4. View results in notebook
 ```bash
 jupyter notebook notebooks/enrichment_overview.ipynb
 ```
