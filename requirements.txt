@@ -1,0 +1,15 @@
+# Core phylo & OTOL
+opentree==1.0.1
+ete3~=3.1
+
+# ETE3 dependencies
+six>=1.16.0
+numpy>=1.24.0
+lxml>=4.9.0
+dendropy>=4.6.0
+
+# Back-port stdlib cgi for Python ≥3.13
+legacy-cgi>=0.4.0
+
+# Testing
+pytest~=8.0
