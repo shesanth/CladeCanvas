@@ -1,4 +1,3 @@
-import os
 import csv
 import importlib
 import fetch_otol
