@@ -1,6 +1,6 @@
 # 🧬 CladeCanvas
 
-**CladeCanvas** is a personal project serving as an interactive phylogenetic visualization and exploration tool. Its end goal is to help users understand the structure of life by combining data from the [OpenTree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) with metadata from **Wikidata** and **Wikipedia**.
+**CladeCanvas** is an interactive phylogenetic visualization and exploration tool built as a personal project. Its end goal is to help users understand the structure of life by combining data from the [OpenTree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) with metadata from **Wikidata** and **Wikipedia**. 
 
 ---
 
