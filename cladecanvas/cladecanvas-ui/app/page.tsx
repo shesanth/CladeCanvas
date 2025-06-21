@@ -70,7 +70,7 @@ export default function Page() {
   return (
     <div className="bg-paper text-ink min-h-screen grid grid-cols-[auto,1fr] p-4 font-sans gap-6">
       <div className="col-span-2 flex justify-between items-center mb-4">
-        <h1 className="title-heading ml-[3.75rem]">CladeCanvas</h1>
+        <h1 className="title-heading">CladeCanvas</h1>
         <div className="flex gap-2 w-1/2">
           <input className="search-bar flex-1"
             placeholder="Search clades or species..."
