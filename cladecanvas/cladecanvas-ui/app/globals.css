@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .search-bar {
+    @apply border bg-[#faf9f6] border-[#d6d3cc] text-[#1f1f1f] placeholder:text-[#777] px-3 py-1 rounded;
+  }
+  .input-light {
+    @apply bg-[#f4f3ef] border-[#d6d3cc] text-[#2e2e2e] placeholder:text-[#777];
+  }
+  .title-heading {
+    @apply text-3xl font-bold leading-tight tracking-normal mt-2 pl-2;
+  }
+  .text-main {
+    @apply text-[#1f1f1f];
+  }
+  .text-muted {
+    @apply text-[#555];
+  }
+  .link-highlight {
+    @apply text-[#3c6e71] underline hover:text-[#2a575e] font-medium;
+  }
+  .text-highlight {
+    @apply text-[#3c6e71];
+  }
+  .bg-paper {
+    @apply bg-[#f4f3ef];
+  }
+  .text-ink {
+    @apply text-[#2e2e2e];
+  }
+  .border-softgray {
+    @apply border-[#d6d3cc];
+  }
+  .hover\:bg-hovergray:hover {
+    @apply hover:bg-[#eceae4];
+  }
+}

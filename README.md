@@ -1,12 +1,12 @@
 # 🧬 CladeCanvas
 
-**CladeCanvas** is a personal project intended to be an interactive phylogenetic visualization and exploration tool. Its end goal is to help users understand the structure of life by combining data from the [OpenTree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) with metadata from **Wikidata** and **Wikipedia**.
+**CladeCanvas** is a personal project serving as an interactive phylogenetic visualization and exploration tool. Its end goal is to help users understand the structure of life by combining data from the [OpenTree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) with metadata from **Wikidata** and **Wikipedia**.
 
 ---
 
-##  What It Currently Does
+## Features
 
-### 1. **Phylogenetic Tree Ingestion**
+### **Phylogenetic Tree Ingestion**
 - Uses `opentree` API to download a subtree for Metazoa (Kingdom Animalia)
 - Parses the Newick tree into a flattened CSV (`metazoa_nodes.csv`)
 - Extracts `ott_id`, taxon name, and parent-child relationships
@@ -16,7 +16,7 @@
 
 ---
 
-### 2. **Metadata Enrichment**
+### **Metadata Enrichment**
 - Enriches taxa with:
   - **Wikidata QIDs**
   - Common names
@@ -30,7 +30,7 @@
 
 ---
 
-### 3. **Exploration & Analysis**
+### **Exploration & Analysis**
 
 #### [`notebooks/enrichment_overview.ipynb`](notebooks/enrichment_overview.ipynb)
 - Visualizes:
@@ -42,7 +42,22 @@
 
 ---
 
-### 4. **FastAPI Backend API**
+### **Frontend UI**
+
+![CladeCanvas UI](CladeCanvas_UI.png)
+
+An interactive React-based visualization built with Next.js (after several hours of pain with Vite) and Tailwind CSS.
+
+- Lazy-loads tree structure as you explore
+- Dynamic metadata panel with Wikipedia descriptions and images
+- Search by common/scientific name
+- Breadcrumb navigation for ancestral lineage
+
+The Dev server starts alongside the API and queries it live for data.
+
+---
+
+### **FastAPI Backend API**
 
 A queryable API for powering the eventual front-end visualization.
 
@@ -178,3 +193,7 @@ jupyter notebook notebooks/enrichment_overview.ipynb
 | Notebook                                                             | Description                                 |
 | -------------------------------------------------------------------- | ------------------------------------------- |
 | [`enrichment_overview.ipynb`](notebooks/enrichment_overview.ipynb)   | Stats, charts, and displays image previews, descriptions, and links for taxa |
+
+### 5. Front end visualization
+
+> Dev server instructions can be found in in [`cladecanvas/cladecanvas-ui/README.md`](cladecanvas/cladecanvas-ui/README.md). It queries the API server for data.
