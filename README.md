@@ -57,9 +57,9 @@ The Dev server starts alongside the API and queries it live for data.
 
 ---
 
-### **FastAPI Backend API**
+### **Backend API**
 
-A queryable API for powering the eventual front-end visualization.
+A queryable API built with FastAPI for powering the eventual front-end visualization.
 
 #### Core Endpoints
 | Endpoint | Description |
@@ -72,14 +72,6 @@ A queryable API for powering the eventual front-end visualization.
 | `GET /node/metadata/{ott_id}` | Metadata for a specific node |
 | `GET /node/bulk?ott_ids=...` | Batch metadata for many nodes |
 | `GET /search?q=...` | Search by name/description |
-
-#### Dev Server
-```bash
-uvicorn cladecanvas.api.main:app --reload
-```
-Then visit:
-- Swagger: http://127.0.0.1:8000/docs
-- ReDoc:   http://127.0.0.1:8000/redoc
 
 #### Example Usage
 
@@ -125,10 +117,10 @@ GET /node/683263
 _Response:_
 ```json
 {
-  "ott_id": 0,
-  "name": "string",
-  "parent_ott_id": 0,
-  "child_count": 0,
+  "ott_id": 683263,
+  "name": "Eutheria (in Deuterostomia)",
+  "parent_ott_id": 229558,
+  "child_count": null,
   "has_metadata": true
 }
 ```
@@ -198,13 +190,16 @@ python -m scripts.run_workers --workers 8 --limit 100 --loops 100 --sleep 2
 ```bash
 uvicorn cladecanvas.api.main:app --reload
 ```
+Then visit:
+- Swagger: http://127.0.0.1:8000/docs
+- ReDoc:   http://127.0.0.1:8000/redoc
 
 ### 4. View results in notebook
 ```bash
 jupyter notebook notebooks/enrichment_overview.ipynb
 ```
 
-### Notebooks Worth Exploring
+#### Notebooks Worth Exploring
 
 | Notebook                                                             | Description                                 |
 | -------------------------------------------------------------------- | ------------------------------------------- |
