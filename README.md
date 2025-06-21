@@ -44,7 +44,7 @@
 
 ### **Frontend UI**
 
-![CladeCanvas UI](CladeCanvas_UI.png)
+![CladeCanvas UI](CladeCanvas_UI.png?)
 
 An interactive React-based visualization built with Next.js (after several hours of pain with Vite) and Tailwind CSS.
 
