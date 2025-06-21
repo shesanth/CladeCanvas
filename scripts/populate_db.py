@@ -16,7 +16,6 @@ LOG_FILE.parent.mkdir(exist_ok=True)
 
 logging.basicConfig(filename=LOG_FILE, level=logging.ERROR, format='%(asctime)s %(message)s')
 
-
 def load_nodes_from_csv(session):
     df = pd.read_csv(DATA_CSV, dtype={"ott_id": "Int64", "parent_ott_id": "Int64"})
     records = df.dropna(subset=["ott_id"]).to_dict("records")
@@ -24,7 +23,6 @@ def load_nodes_from_csv(session):
     session.execute(stmt)
     session.commit()
     print(f"Inserted {len(records)} nodes (deduplicated).")
-
 
 def get_missing_ott_ids(session, limit):
     result = session.execute(text(f"""
@@ -38,10 +36,13 @@ def get_missing_ott_ids(session, limit):
     """))
     return [row[0] for row in result.fetchall()]
 
-
 def enrich_and_store_metadata(session, ott_ids):
     try:
-        enriched = fetch_wikidata(ott_ids)
+        rows = session.execute(
+            text("SELECT ott_id, name FROM nodes WHERE ott_id = ANY(:ids)"),
+            {"ids": ott_ids}
+        ).fetchall()
+        enriched = fetch_wikidata([{"ott_id": row[0], "name": row[1]} for row in rows])
 
         # Deduplicate records by OTT ID (last one wins)
         deduped = {record["ott_id"]: record for record in enriched}.values()
@@ -60,11 +61,9 @@ def enrich_and_store_metadata(session, ott_ids):
             session.commit()
             print(f"Enriched and stored metadata for {len(deduped)} taxa.")
     except Exception as e:
-        # Reset the failed transaction
-        session.rollback() 
+        session.rollback()
         logging.error(f"Failed enrichment for {ott_ids}: {e}")
         print(f"Error enriching batch: {e}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Populate DB with OpenTree + Wikidata metadata.")
@@ -97,7 +96,6 @@ def main():
             break
 
     session.close()
-
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ import argparse
 
 def get_batch(session, limit):
     result = session.execute(text(f"""
-        SELECT n.ott_id
+        SELECT n.ott_id, n.name
         FROM nodes n
         WHERE NOT EXISTS (
             SELECT 1 FROM metadata m WHERE m.ott_id = n.ott_id
@@ -18,18 +18,19 @@ def get_batch(session, limit):
         ORDER BY RANDOM()
         LIMIT {limit}
     """))
-    return [row[0] for row in result.fetchall()]
+    return [{'ott_id': row[0], 'name': row[1]} for row in result.fetchall()]
 
 def enrich_batch(worker_id, batch_size, sleep_time, loop_count):
     for i in range(loop_count):
         session = Session()
         try:
-            ott_ids = get_batch(session, batch_size)
-            if not ott_ids:
+            print(f"[Worker {worker_id}] Requesting batch of {batch_size}…")
+            batch = get_batch(session, batch_size)
+            if not batch:
                 print(f"[Worker {worker_id}] No more taxa to enrich.")
                 break
 
-            enriched = fetch_wikidata(ott_ids)
+            enriched = fetch_wikidata(batch)
             if enriched:
                 deduped = {row['ott_id']: row for row in enriched}.values()
 
