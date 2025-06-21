@@ -68,7 +68,8 @@ A queryable API for powering the eventual front-end visualization.
 | `GET /tree/children/{ott_id}` | Immediate children for lazy tree loading |
 | `GET /tree/subtree/{ott_id}?depth=N` | Subtree of depth `N` for eager loading |
 | `GET /tree/lineage/{ott_id}` | Ancestors from root to this node |
-| `GET /node/{ott_id}` | Metadata for a specific node |
+| `GET /node/{ott_id}` | Get a specific node |
+| `GET /node/metadata/{ott_id}` | Metadata for a specific node |
 | `GET /node/bulk?ott_ids=...` | Batch metadata for many nodes |
 | `GET /search?q=...` | Search by name/description |
 
@@ -117,22 +118,37 @@ _Response:_
 ]
 ```
 
-**Get metadata for a specific node**
+**Get a specific node**
 ```http
 GET /node/683263
 ```
 _Response:_
 ```json
- {
-    "ott_id": 683263,
-    "common_name": "Eutheria",
-    "description": "clade of therian mammals",
-    "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
-    "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
-    "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
-    "rank": null,
-    "enriched_score": 1
-  },
+{
+  "ott_id": 0,
+  "name": "string",
+  "parent_ott_id": 0,
+  "child_count": 0,
+  "has_metadata": true
+}
+```
+
+**Get metadata for a specific node**
+```http
+GET /node/metadata/683263
+```
+_Response:_
+```json
+{
+  "ott_id": 683263,
+  "common_name": "Eutheria",
+  "description": "clade of therian mammals",
+  "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
+  "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
+  "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
+  "rank": null,
+  "enriched_score": 1
+}
 ```
 
 **Get lineage (ancestry) for a node**
