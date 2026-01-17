@@ -163,6 +163,7 @@ _Response:_
 ## How to Run
 
 > **Set the `POSTGRES_URL` environment variable to point to your PostgreSQL instance**
+> The application raises a `RuntimeError` at startup if this variable is missing.
 
 Example:
 ```bash
