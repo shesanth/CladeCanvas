@@ -2,7 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 
 class NodeMetadata(BaseModel):
-    ott_id: int
+    node_id: str
+    ott_id: Optional[int] = None
     common_name: Optional[str]
     description: Optional[str]
     full_description: Optional[str]
@@ -14,9 +15,10 @@ class NodeMetadata(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class TreeNode(BaseModel):
-    ott_id: int
+    node_id: str
+    ott_id: Optional[int] = None
     name: str
-    parent_ott_id: Optional[int]
+    parent_node_id: Optional[str] = None
     child_count: Optional[int]
     has_metadata: Optional[bool]
 

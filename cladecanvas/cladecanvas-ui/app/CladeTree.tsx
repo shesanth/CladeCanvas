@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 
 export type TreeNode = {
   name: string;
-  ott_id: number;
+  node_id: string;
+  ott_id?: number | null;
   child_count?: number | null;
   has_metadata?: boolean | null;
   rank?: string | null;
@@ -13,13 +14,13 @@ export type TreeNode = {
 type Props = {
   api: string;
   onSelect: (node: TreeNode) => void;
-  activeOttId: number | null;
-  rootOttId: number;
+  activeNodeId: string | null;
+  rootNodeId: string;
 };
 
-export default function CladeTree({ api, onSelect, activeOttId, rootOttId }: Props) {
+export default function CladeTree({ api, onSelect, activeNodeId, rootNodeId }: Props) {
   const [tree, setTree] = useState<TreeNodeWithChildren | null>(null);
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   type TreeNodeWithChildren = TreeNode & { children?: TreeNodeWithChildren[] };
 
@@ -34,28 +35,28 @@ export default function CladeTree({ api, onSelect, activeOttId, rootOttId }: Pro
     clade: 900,
   };
 
-  const PRIORITY_OTT_IDS = new Set([
-    641038, // Eumetazoa, doesn't have official rank but is a major clade
+  const PRIORITY_NODE_IDS = new Set([
+    "ott641038", // Eumetazoa, doesn't have official rank but is a major clade
   ]);
 
   const score = (n: TreeNode) => {
     const metadataScore = n.has_metadata ? 100 : 0;
     const childScore = typeof n.child_count === "number" ? n.child_count : 0;
     const rankBoost = n.rank ? (RANK_PRIORITY[n.rank.toLowerCase()] ?? 0) : 0;
-    const priorityBoost = PRIORITY_OTT_IDS.has(n.ott_id) ? 10000 : 0;
+    const priorityBoost = PRIORITY_NODE_IDS.has(n.node_id) ? 10000 : 0;
     return metadataScore + childScore + rankBoost + priorityBoost;
   };
 
   useEffect(() => {
-    if (!rootOttId) return;
+    if (!rootNodeId) return;
 
     const loadTree = async () => {
       try {
-        const nodeRes = await fetch(`${api}/node/${rootOttId}`);
+        const nodeRes = await fetch(`${api}/node/${rootNodeId}`);
         if (!nodeRes.ok) throw new Error("Failed to fetch node");
         const node: TreeNode = await nodeRes.json();
 
-        const childrenRes = await fetch(`${api}/tree/children/${rootOttId}`);
+        const childrenRes = await fetch(`${api}/tree/children/${rootNodeId}`);
         if (!childrenRes.ok) throw new Error("Failed to fetch children");
         const children: TreeNode[] = await childrenRes.json();
 
@@ -69,7 +70,7 @@ export default function CladeTree({ api, onSelect, activeOttId, rootOttId }: Pro
           .slice(0, 100);
 
         setTree({ ...node, children: topChildren });
-        setExpanded({ [node.ott_id]: true });
+        setExpanded({ [node.node_id]: true });
       } catch (err) {
         console.error("loadTree error", err);
         setTree(null);
@@ -77,17 +78,17 @@ export default function CladeTree({ api, onSelect, activeOttId, rootOttId }: Pro
     };
 
     loadTree();
-  }, [api, rootOttId]);
+  }, [api, rootNodeId]);
 
   const toggleExpand = async (node: TreeNodeWithChildren) => {
-    const isOpen = expanded[node.ott_id];
+    const isOpen = expanded[node.node_id];
     if (isOpen) {
-      setExpanded((prev) => ({ ...prev, [node.ott_id]: false }));
+      setExpanded((prev) => ({ ...prev, [node.node_id]: false }));
       return;
     }
 
     try {
-      const res = await fetch(`${api}/tree/children/${node.ott_id}`);
+      const res = await fetch(`${api}/tree/children/${node.node_id}`);
       if (!res.ok) return;
       const children: TreeNode[] = await res.json();
 
@@ -107,23 +108,23 @@ export default function CladeTree({ api, onSelect, activeOttId, rootOttId }: Pro
       return;
     }
 
-    setExpanded((prev) => ({ ...prev, [node.ott_id]: true }));
+    setExpanded((prev) => ({ ...prev, [node.node_id]: true }));
   };
 
   const renderTree = (node: TreeNodeWithChildren): React.ReactNode => (
-    <div key={node.ott_id} className="pl-2">
+    <div key={node.node_id} className="pl-2">
       <button
         onClick={() => {
           onSelect(node);
           toggleExpand(node);
         }}
         className={`text-left text-sm py-0.5 w-full truncate ${
-          node.ott_id === activeOttId ? "font-bold text-highlight" : ""
+          node.node_id === activeNodeId ? "font-bold text-highlight" : ""
         }`}
       >
         {node.name}
       </button>
-      {expanded[node.ott_id] && node.children && (
+      {expanded[node.node_id] && node.children && (
         <div className="pl-4 border-l border-gray-300 ml-1">
           {node.children.map((child) => renderTree(child))}
         </div>

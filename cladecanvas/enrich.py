@@ -111,7 +111,7 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
         if ott in matched_ott_ids:
             continue
 
-        time.sleep(1.0 + random.uniform(0, 0.5))
+        # time.sleep(1.0 + random.uniform(0, 0.5))
 
         fallback_name = clean_taxon_name(ott_id_map.get(ott, str(ott)))
         sparql = f"""

@@ -8,21 +8,21 @@ from typing import List
 
 router = APIRouter()
 
-@router.get("/{ott_id}", response_model=TreeNode)
-def get_node_struct(ott_id: int, db: Session = Depends(get_db)):
-    result = db.execute(select(nodes).where(nodes.c.ott_id == ott_id)).first()
-    if result is None:
-        raise HTTPException(status_code=404, detail="Node not found")
-    return result._mapping
-
-@router.get("/metadata/{ott_id}", response_model=NodeMetadata)
-def get_node_metadata(ott_id: int, db: Session = Depends(get_db)):
-    result = db.execute(select(metadata_table).where(metadata_table.c.ott_id == ott_id)).first()
+@router.get("/metadata/{node_id:path}", response_model=NodeMetadata)
+def get_node_metadata(node_id: str, db: Session = Depends(get_db)):
+    result = db.execute(select(metadata_table).where(metadata_table.c.node_id == node_id)).first()
     if result is None:
         raise HTTPException(status_code=404, detail="Metadata not found")
     return result._mapping
 
 @router.get("/bulk", response_model=List[NodeMetadata])
-def get_bulk_metadata(ott_ids: List[int] = Query(...), db: Session = Depends(get_db)):
-    result = db.execute(select(metadata_table).where(metadata_table.c.ott_id.in_(ott_ids))).fetchall()
+def get_bulk_metadata(node_ids: List[str] = Query(...), db: Session = Depends(get_db)):
+    result = db.execute(select(metadata_table).where(metadata_table.c.node_id.in_(node_ids))).fetchall()
     return [row._mapping for row in result]
+
+@router.get("/{node_id:path}", response_model=TreeNode)
+def get_node_struct(node_id: str, db: Session = Depends(get_db)):
+    result = db.execute(select(nodes).where(nodes.c.node_id == node_id)).first()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return result._mapping

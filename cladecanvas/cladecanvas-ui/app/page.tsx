@@ -6,15 +6,17 @@ import DOMPurify from "dompurify";
 import dynamic from "next/dynamic";
 
 export type Node = {
-  ott_id: number;
+  node_id: string;
+  ott_id?: number;
   name: string;
-  parent_ott_id?: number;
+  parent_node_id?: string;
   child_count?: number;
   has_metadata?: boolean;
 };
 
 export type Metadata = {
-  ott_id: number;
+  node_id: string;
+  ott_id?: number;
   common_name?: string;
   description?: string;
   full_description?: string;
@@ -29,14 +31,14 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Metadata[]>([]);
   const [selectedNode, setSelectedNode] = useState<Metadata | null>(null);
-  const [activeOttId, setActiveOttId] = useState<number | null>(null);
-  const [treeRootOttId, setTreeRootOttId] = useState<number>(691846); // Metazoa
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [treeRootNodeId, setTreeRootNodeId] = useState<string>("ott691846"); // Metazoa
   const [breadcrumb, setBreadcrumb] = useState<Node[]>([]);
   const API = process.env.NEXT_PUBLIC_API_BASE;
 
-  const fetchNode = (ottId: number) => {
-    if (!ottId) return;
-    fetch(`${API}/node/metadata/${ottId}`)
+  const fetchNode = (nodeId: string) => {
+    if (!nodeId) return;
+    fetch(`${API}/node/metadata/${nodeId}`)
       .then((res) => {
         if (!res.ok) throw new Error("Metadata not found");
         return res.json();
@@ -45,16 +47,16 @@ export default function Page() {
       .catch(() => setSelectedNode(null));
   };
 
-  const buildBreadcrumbTrail = async (startingOttId: number) => {
+  const buildBreadcrumbTrail = async (startingNodeId: string) => {
     try {
-      const res = await fetch(`${API}/tree/lineage/${startingOttId}`);
+      const res = await fetch(`${API}/tree/lineage/${startingNodeId}`);
       if (!res.ok) return;
       const { lineage } = await res.json();
       setBreadcrumb(lineage);
 
       if (lineage.length > 1) {
         const parent = lineage[lineage.length - 2];
-        setTreeRootOttId(parent.ott_id);
+        setTreeRootNodeId(parent.node_id);
       }
     } catch {
       // silently fail for now
@@ -89,12 +91,12 @@ export default function Page() {
       <CladeTree
         api={API!}
         onSelect={(node) => {
-          setActiveOttId(node.ott_id);
-          fetchNode(node.ott_id);
-          buildBreadcrumbTrail(node.ott_id);
+          setActiveNodeId(node.node_id);
+          fetchNode(node.node_id);
+          buildBreadcrumbTrail(node.node_id);
         }}
-        activeOttId={activeOttId}
-        rootOttId={treeRootOttId}
+        activeNodeId={activeNodeId}
+        rootNodeId={treeRootNodeId}
       />
 
       <div className="flex flex-col gap-4">
@@ -102,18 +104,18 @@ export default function Page() {
           <div className="bg-white shadow rounded p-3 max-h-40 overflow-y-auto border text-sm">
             {searchResults.map((res) => (
               <div
-                key={res.ott_id}
+                key={res.node_id}
                 className="cursor-pointer hover:bg-hovergray p-1"
                 onClick={() => {
                   setSelectedNode(res);
-                  setActiveOttId(res.ott_id);
+                  setActiveNodeId(res.node_id);
                   setSearchResults([]);
-                  buildBreadcrumbTrail(res.ott_id);
+                  buildBreadcrumbTrail(res.node_id);
                 }}
               >
               <div className="cursor-pointer hover:bg-hovergray p-1">
                 <span className={res.common_name ? "" : "font-mono text-xs text-[#888]"}>
-                  {res.common_name || `OTT ${res.ott_id}`}
+                  {res.common_name || `OTT ${res.ott_id ?? res.node_id}`}
                 </span>
               </div>
               </div>
@@ -124,14 +126,14 @@ export default function Page() {
         {breadcrumb.length > 1 && (
           <div className="text-sm text-[#777]">
             {breadcrumb.map((node, idx) => (
-              <span key={node.ott_id}>
+              <span key={node.node_id}>
                 {idx > 0 && " › "}
                 <span
                   className="cursor-pointer hover:underline"
                   onClick={() => {
-                    setActiveOttId(node.ott_id);
-                    fetchNode(node.ott_id);
-                    buildBreadcrumbTrail(node.ott_id);
+                    setActiveNodeId(node.node_id);
+                    fetchNode(node.node_id);
+                    buildBreadcrumbTrail(node.node_id);
                   }}
                 >
                   {node.name}
@@ -144,7 +146,7 @@ export default function Page() {
         {selectedNode ? (
           <div className="bg-white/70 shadow rounded-lg p-6 border border-[#e1dfda] prose max-w-none">
             <h2 className="text-2xl font-bold mb-2">
-              {selectedNode.common_name || `OTT ${selectedNode.ott_id}`}
+              {selectedNode.common_name || `OTT ${selectedNode.ott_id ?? selectedNode.node_id}`}
             </h2>
             {selectedNode.image_url && (
               <img src={selectedNode.image_url} alt={selectedNode.common_name} className="float-right max-h-64 ml-6 mt-1 mb-2 min-w-[220px] max-w-[360px] object-contain rounded border"

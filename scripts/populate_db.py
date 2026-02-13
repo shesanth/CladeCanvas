@@ -7,54 +7,76 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import text
 
 from cladecanvas.db import Session
-from cladecanvas.schema import initialize_postgres_db, nodes, metadata_table
+from cladecanvas.schema import initialize_postgres_db, migrate_schema, nodes, metadata_table
 from cladecanvas.enrich import fetch_wikidata
 
-DATA_CSV = Path("data/metazoa_nodes.csv")
+DATA_CSV = Path("data/metazoa_nodes_synth.csv")
 LOG_FILE = Path("logs/enrich_errors.log")
 LOG_FILE.parent.mkdir(exist_ok=True)
 
 logging.basicConfig(filename=LOG_FILE, level=logging.ERROR, format='%(asctime)s %(message)s')
 
-def load_nodes_from_csv(session):
-    df = pd.read_csv(DATA_CSV, dtype={"ott_id": "Int64", "parent_ott_id": "Int64"})
-    records = df.dropna(subset=["ott_id"]).to_dict("records")
-    stmt = pg_insert(nodes).values(records).on_conflict_do_nothing()
-    session.execute(stmt)
-    session.commit()
-    print(f"Inserted {len(records)} nodes (deduplicated).")
+
+def load_nodes_from_csv(session, batch_size=10000):
+    df = pd.read_csv(DATA_CSV, dtype={"ott_id": "Int64"})
+    # Convert pd.NA to None so SQLAlchemy handles nullable int correctly
+    records = df.where(pd.notna(df), other=None).to_dict("records")
+    n_synth = sum(1 for r in records if r.get("ott_id") is None)
+    total_inserted = 0
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        stmt = pg_insert(nodes).values(batch).on_conflict_do_update(
+            index_elements=["node_id"],
+            set_={"parent_node_id": pg_insert(nodes).excluded.parent_node_id}
+        )
+        session.execute(stmt)
+        session.commit()
+        total_inserted += len(batch)
+        if total_inserted % 100000 < batch_size:
+            print(f"  ...{total_inserted:,}/{len(records):,} rows")
+    print(f"Upserted {len(records):,} nodes ({n_synth:,} synthetic, {len(records)-n_synth:,} taxon).")
+
 
 def get_missing_ott_ids(session, limit):
+    # Only enrich nodes that have a real OTT ID (synthetic nodes have no Wikidata entry)
     result = session.execute(text(f"""
         SELECT n.ott_id
         FROM nodes n
-        WHERE NOT EXISTS (
-            SELECT 1 FROM metadata m WHERE m.ott_id = n.ott_id
-        )
+        WHERE n.ott_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM metadata m WHERE m.node_id = n.node_id
+          )
         ORDER BY RANDOM()
         LIMIT {limit}
     """))
     return [row[0] for row in result.fetchall()]
 
+
 def enrich_and_store_metadata(session, ott_ids):
     try:
         rows = session.execute(
-            text("SELECT ott_id, name FROM nodes WHERE ott_id = ANY(:ids)"),
+            text("SELECT node_id, ott_id, name FROM nodes WHERE ott_id = ANY(:ids)"),
             {"ids": ott_ids}
         ).fetchall()
-        enriched = fetch_wikidata([{"ott_id": row[0], "name": row[1]} for row in rows])
+        enriched = fetch_wikidata([{"ott_id": row[1], "name": row[2], "node_id": row[0]} for row in rows])
 
-        # Deduplicate records by OTT ID (last one wins)
-        deduped = {record["ott_id"]: record for record in enriched}.values()
+        # Attach node_id to each enriched record
+        node_id_map = {row[1]: row[0] for row in rows}  # ott_id -> node_id
+        for record in enriched:
+            if "node_id" not in record:
+                record["node_id"] = node_id_map.get(record["ott_id"])
+
+        # Deduplicate by node_id (last one wins)
+        deduped = {r["node_id"]: r for r in enriched if r.get("node_id")}.values()
 
         if deduped:
             insert_stmt = pg_insert(metadata_table).values(list(deduped))
             update_fields = {
                 k: insert_stmt.excluded[k]
-                for k in next(iter(deduped)) if k != "ott_id"
+                for k in next(iter(deduped)) if k != "node_id"
             }
             stmt = insert_stmt.on_conflict_do_update(
-                index_elements=["ott_id"],
+                index_elements=["node_id"],
                 set_=update_fields
             )
             session.execute(stmt)
@@ -65,13 +87,20 @@ def enrich_and_store_metadata(session, ott_ids):
         logging.error(f"Failed enrichment for {ott_ids}: {e}")
         print(f"Error enriching batch: {e}")
 
+
 def main():
     parser = argparse.ArgumentParser(description="Populate DB with OpenTree + Wikidata metadata.")
     parser.add_argument("--limit", type=int, default=100, help="Batch size for enrichment")
     parser.add_argument("--skip-load", action="store_true", help="Skip loading nodes from CSV")
+    parser.add_argument("--skip-enrich", action="store_true", help="Skip metadata enrichment")
     parser.add_argument("--max-batches", type=int, default=None, help="Stop after this many batches")
-
+    parser.add_argument("--migrate", action="store_true",
+                        help="Run schema migration (ott_id PK → node_id PK) before loading")
     args = parser.parse_args()
+
+    if args.migrate:
+        print("Running schema migration…")
+        migrate_schema()
 
     initialize_postgres_db()
     session = Session()
@@ -80,6 +109,10 @@ def main():
         print("Loading nodes from CSV…")
         load_nodes_from_csv(session)
 
+    if args.skip_enrich:
+        session.close()
+        return
+
     batch_count = 0
     while True:
         ott_ids = get_missing_ott_ids(session, args.limit)
@@ -87,7 +120,7 @@ def main():
             print("All taxa are enriched.")
             break
 
-        print(f"Enriching batch of {len(ott_ids)} OTTs: {ott_ids}")
+        print(f"Enriching batch of {len(ott_ids)} OTTs: {ott_ids[:5]}{'…' if len(ott_ids)>5 else ''}")
         enrich_and_store_metadata(session, ott_ids)
 
         batch_count += 1
@@ -96,6 +129,7 @@ def main():
             break
 
     session.close()
+
 
 if __name__ == "__main__":
     main()
