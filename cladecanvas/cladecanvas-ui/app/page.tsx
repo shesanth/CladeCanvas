@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import DOMPurify from "dompurify";
 import dynamic from "next/dynamic";
 
@@ -43,16 +43,24 @@ export default function Page() {
   const [treeRootNodeId, setTreeRootNodeId] = useState<string>("ott691846"); // Metazoa
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
   const API = process.env.NEXT_PUBLIC_API_BASE;
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const fetchNode = (nodeId: string) => {
     if (!nodeId) return;
-    fetch(`${API}/node/metadata/${nodeId}`)
+    // Cancel any in-flight metadata request so a slow response can't overwrite a newer click
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    fetch(`${API}/node/metadata/${nodeId}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Metadata not found");
         return res.json();
       })
       .then(setSelectedNode)
-      .catch(() => setSelectedNode(null));
+      .catch((err) => {
+        if (err.name !== "AbortError") setSelectedNode(null);
+      });
   };
 
   const isSynthetic = (node: Node) => node.node_id.startsWith("mrcaott");

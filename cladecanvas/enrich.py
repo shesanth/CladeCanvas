@@ -79,9 +79,24 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
     results = []
     matched_ott_ids = set()
 
+    # Group SPARQL hits by OTT ID — multiple Wikidata entries can share one P9157 value
+    hits_by_ott: dict[int, list] = {}
     for b in data:
         ott = int(b['ott']['value'])
+        hits_by_ott.setdefault(ott, []).append(b)
+
+    for ott, bindings in hits_by_ott.items():
         matched_ott_ids.add(ott)
+        expected_name = ott_id_map.get(ott, "").lower()
+
+        # Prefer the entry whose label matches the taxon name from OToL
+        best = bindings[0]
+        for b in bindings:
+            if b['itemLabel']['value'].lower() == expected_name:
+                best = b
+                break
+
+        b = best
         q = b['item']['value'].rsplit('/', 1)[-1]
         short_desc = b.get('desc', {}).get('value')
         image = b.get('image', {}).get('value')
