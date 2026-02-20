@@ -113,7 +113,15 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
 
         # time.sleep(1.0 + random.uniform(0, 0.5))
 
-        fallback_name = clean_taxon_name(ott_id_map.get(ott, str(ott)))
+        original_name = ott_id_map.get(ott, str(ott))
+        fallback_name = clean_taxon_name(original_name)
+
+        # Skip unidentified specimens — "sp." names would match their
+        # parent clade via P225, returning wrong metadata
+        if re.search(r'\bsp\.', original_name):
+            miss_log_file.write(f"{ott}\t{original_name}\tskipped-sp\n")
+            continue
+
         sparql = f"""
 SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
   ?item wdt:P225 "{fallback_name}" .

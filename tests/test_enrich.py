@@ -202,3 +202,21 @@ class TestFetchWikidata:
         results = fetch_wikidata([{"ott_id": 888, "name": "Rara", "node_id": "ott888"}])
         assert len(results) == 1
         assert results[0]["wikidata_q"] == "Q888"
+
+    @patch("cladecanvas.enrich.fetch_wikipedia_extract")
+    @patch("cladecanvas.enrich.requests.get")
+    def test_sp_name_skips_fallback(self, mock_get, mock_wiki):
+        """Nodes with 'sp.' in name should NOT fallback to parent clade."""
+        mock_wiki.return_value = (None, None)
+
+        # P9157 returns nothing (no OTT match for this specimen)
+        sparql_empty = MagicMock()
+        sparql_empty.json.return_value = {"results": {"bindings": []}}
+        mock_get.return_value = sparql_empty
+
+        results = fetch_wikidata([
+            {"ott_id": 77777, "name": "Rodentia sp. BX-103", "node_id": "ott77777"}
+        ])
+        assert len(results) == 0
+        # Should only have called SPARQL once (P9157), NOT the P225 fallback
+        assert mock_get.call_count == 1
