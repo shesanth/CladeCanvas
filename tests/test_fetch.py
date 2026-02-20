@@ -105,3 +105,141 @@ def test_download_synth_writes_csv(tmp_path, monkeypatch):
     assert len(rows) == 3
     names = {r["name"] for r in rows}
     assert names == {"Root", "A", "B"}
+
+
+# ── Edge cases ───────────────────────────────────────────────────────────────
+
+def test_parse_empty_node_id():
+    """Node with empty node_id should be silently skipped."""
+    importlib.reload(fetch_otol)
+    tree = {"node_id": "", "taxon": {"ott_id": 1, "name": "Ghost"}, "children": []}
+    rows, seen, frontier = [], set(), []
+    fetch_otol._parse_arguson(tree, None, rows, seen, frontier)
+    assert rows == []
+
+
+def test_parse_deduplication():
+    """A node already in 'seen' should not produce a second row."""
+    importlib.reload(fetch_otol)
+    tree = {
+        "node_id": "ott5",
+        "taxon": {"ott_id": 5, "name": "Dup"},
+        "num_tips": 1,
+        "children": [],
+    }
+    rows, frontier = [], []
+    seen = {"ott5"}  # already seen
+    fetch_otol._parse_arguson(tree, None, rows, seen, frontier)
+    assert len(rows) == 0  # no new row added
+
+
+def test_parse_synthetic_empty_descendant_list():
+    """MRCA node with empty descendant_name_list falls back to node_id."""
+    importlib.reload(fetch_otol)
+    tree = {
+        "node_id": "mrcaott1ott2",
+        "descendant_name_list": [],
+        "num_tips": 5,
+        "children": [],
+    }
+    rows, seen, frontier = [], set(), []
+    fetch_otol._parse_arguson(tree, None, rows, seen, frontier)
+    assert rows[0]["name"] == "mrcaott1ott2"
+
+
+def test_leaf_num_tips_one_not_in_frontier():
+    """A leaf with num_tips=1 and no children key should NOT be in the frontier."""
+    importlib.reload(fetch_otol)
+    tree = {
+        "node_id": "ott99",
+        "taxon": {"ott_id": 99, "name": "Leaf"},
+        "num_tips": 1,
+    }
+    rows, seen, frontier = [], set(), []
+    fetch_otol._parse_arguson(tree, None, rows, seen, frontier)
+    assert len(rows) == 1
+    assert frontier == []
+
+
+def test_leaf_num_tips_zero_not_in_frontier():
+    """A node with num_tips=0 should NOT be in the frontier."""
+    importlib.reload(fetch_otol)
+    tree = {
+        "node_id": "ott0",
+        "taxon": {"ott_id": 0, "name": "Empty"},
+        "num_tips": 0,
+    }
+    rows, seen, frontier = [], set(), []
+    fetch_otol._parse_arguson(tree, None, rows, seen, frontier)
+    assert frontier == []
+
+
+def test_download_multi_wave(tmp_path, monkeypatch):
+    """download_synth_arguson should expand truncated nodes in subsequent waves."""
+    importlib.reload(fetch_otol)
+    monkeypatch.setattr(fetch_otol, "DATA_DIR", str(tmp_path))
+    csv_path = str(tmp_path / "metazoa_nodes_synth.csv")
+    monkeypatch.setattr(fetch_otol, "CSV_PATH", csv_path)
+    monkeypatch.setattr(fetch_otol, "OTT_ID", 100)  # root = ott100
+
+    # Wave 1: root with a truncated child (no children key, num_tips > 1)
+    wave1_tree = {
+        "node_id": "ott100",
+        "taxon": {"ott_id": 100, "name": "Root"},
+        "num_tips": 10,
+        "children": [
+            {
+                "node_id": "ott200",
+                "taxon": {"ott_id": 200, "name": "Truncated"},
+                "num_tips": 5,
+                # no "children" key -> goes to frontier
+            },
+        ],
+    }
+    # Wave 2: expanding the truncated node
+    wave2_tree = {
+        "node_id": "ott200",
+        "taxon": {"ott_id": 200, "name": "Truncated"},
+        "num_tips": 5,
+        "children": [
+            {
+                "node_id": "ott201",
+                "taxon": {"ott_id": 201, "name": "Child1"},
+                "num_tips": 1,
+                "children": [],
+            },
+        ],
+    }
+
+    call_count = [0]
+
+    def mock_subtree(node_id):
+        call_count[0] += 1
+        if node_id == "ott100":
+            return wave1_tree
+        elif node_id == "ott200":
+            return wave2_tree
+        return None
+
+    with patch.object(fetch_otol, "_arguson_subtree", side_effect=mock_subtree):
+        fetch_otol.download_synth_arguson()
+
+    rows = list(csv.DictReader(open(csv_path)))
+    names = {r["name"] for r in rows}
+    assert "Root" in names
+    assert "Child1" in names
+    assert call_count[0] == 2  # two API calls: wave 1 + wave 2
+
+
+def test_download_handles_none_subtree(tmp_path, monkeypatch):
+    """download_synth_arguson should handle _arguson_subtree returning None."""
+    importlib.reload(fetch_otol)
+    monkeypatch.setattr(fetch_otol, "DATA_DIR", str(tmp_path))
+    csv_path = str(tmp_path / "metazoa_nodes_synth.csv")
+    monkeypatch.setattr(fetch_otol, "CSV_PATH", csv_path)
+
+    with patch.object(fetch_otol, "_arguson_subtree", return_value=None):
+        fetch_otol.download_synth_arguson()
+
+    rows = list(csv.DictReader(open(csv_path)))
+    assert len(rows) == 0  # no data, but CSV still created with headers
