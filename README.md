@@ -1,211 +1,203 @@
-# 🧬 CladeCanvas
+# CladeCanvas
 
-**CladeCanvas** is an interactive phylogenetic visualization and exploration tool built as a personal project. Its end goal is to help users understand the structure of life by combining data from the [OpenTree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) with metadata from **Wikidata** and **Wikipedia**. 
+CladeCanvas is an interactive phylogenetic visualization and exploration tool. It combines data from the [Open Tree of Life](https://github.com/OpenTreeOfLife/germinator/wiki/Open-Tree-of-Life-Web-APIs) synthesis tree with metadata from Wikidata and Wikipedia to let users navigate the structure of animal life.
 
----
+![CladeCanvas UI](CladeCanvas_UI.png)
 
 ## Features
 
-### **Phylogenetic Tree Ingestion**
-- Uses `opentree` API to download a subtree for Metazoa (Kingdom Animalia)
-- Parses the Newick tree into a flattened CSV (`metazoa_nodes.csv`)
-- Extracts `ott_id`, taxon name, and parent-child relationships
-- Populates the `nodes` table in a PostgreSQL database
+- Lazy-loading tree sidebar with expand-in-place navigation
+- Metadata panel with Wikipedia descriptions, images, and links
+- Search by common name or description
+- Breadcrumb lineage trail with collapsed synthetic node runs
+- Readable labels for synthetic MRCA branching points (e.g. "Bilateria + Porifera")
+- Taxonomy-based aliases for MRCA nodes (e.g. "Arachnida" for `mrcaott343ott948`)
+- Auto-scroll to active node in the tree sidebar
 
-> Tree parsing and csv generation in [`fetch_otol.py`](cladecanvas/fetch_otol.py)
+## Architecture
 
----
-
-### **Metadata Enrichment**
-- Enriches taxa with:
-  - **Wikidata QIDs**
-  - Common names
-  - Short + full Wikipedia descriptions
-  - Image and thumbnail URLs
-  - Wikipedia page URLs
-  - Taxonomic `rank` (e.g., species, genus)
-
->  Parallel workers for populating the DB managed via [`run_workers.py`](scripts/run_workers.py)  
->  Enrichment logic in [`enrich.py`](cladecanvas/enrich.py)
-
----
-
-### **Exploration & Analysis**
-
-#### [`notebooks/enrichment_overview.ipynb`](notebooks/enrichment_overview.ipynb)
-- Visualizes:
-  - Enrichment coverage stats
-  - Metadata availability (images, descriptions, pages)
-  - Display of taxa with thumbnails, descriptions, and ranks
-
-> You can view actual image previews and Wikipedia links for enriched taxa.
-
----
-
-### **Frontend UI**
-
-![CladeCanvas UI](CladeCanvas_UI.png?)
-
-An interactive React-based visualization built with Next.js (after several hours of pain with Vite) and Tailwind CSS.
-
-- Lazy-loads tree structure as you explore
-- Dynamic metadata panel with Wikipedia descriptions and images
-- Search by common/scientific name
-- Breadcrumb navigation for ancestral lineage
-
-The Dev server starts alongside the API and queries it live for data.
-
----
-
-### **Backend API**
-
-A queryable API built with FastAPI for powering the eventual front-end visualization.
-
-#### Core Endpoints
-| Endpoint | Description |
-|----------|-------------|
-| `GET /tree/root` | Get root node |
-| `GET /tree/children/{ott_id}` | Immediate children for lazy tree loading |
-| `GET /tree/subtree/{ott_id}?depth=N` | Subtree of depth `N` for eager loading |
-| `GET /tree/lineage/{ott_id}` | Ancestors from root to this node |
-| `GET /node/{ott_id}` | Get a specific node |
-| `GET /node/metadata/{ott_id}` | Metadata for a specific node |
-| `GET /node/bulk?ott_ids=...` | Batch metadata for many nodes |
-| `GET /search?q=...` | Search by name/description |
-
-#### Example Usage
-
-**Get the root node**
-```http
-GET /tree/root
 ```
-_Response:_
-```json
-{
-  "ott_id": 691846,
-  "name": "Metazoa",
-  "parent_ott_id": null,
-  "child_count": 24,
-  "has_metadata": true
-}
+cladecanvas/
+  fetch_otol.py        # Downloads the OToL synthesis tree via arguson API
+  enrich.py            # Wikidata SPARQL + Wikipedia enrichment
+  schema.py            # SQLAlchemy table definitions (nodes, metadata)
+  db.py                # Engine / session factory (reads POSTGRES_URL)
+  api/
+    main.py            # FastAPI app with CORS
+    routes/            # tree, node, search endpoints
+  cladecanvas-ui/      # Next.js + Tailwind frontend
+
+scripts/
+  populate_db.py       # Loads CSV into PostgreSQL, runs enrichment
+  run_workers.py       # Parallel enrichment workers
+  alias_mrca_nodes.py  # Maps taxonomy names onto synthetic MRCA nodes
 ```
 
-**Search for a clade by name**
-```http
-GET /search?q=Eutheria
-```
-_Response:_
-```json
-[
- {
-    "ott_id": 683263,
-    "common_name": "Eutheria",
-    "description": "clade of therian mammals",
-    "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
-    "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
-    "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
-    "rank": null,
-    "enriched_score": 1
-  },
-]
-```
+The synthesis tree contains ~1.7M nodes under Metazoa, including ~65K synthetic MRCA nodes that represent branching points without a corresponding taxon in the OToL taxonomy.
 
-**Get a specific node**
-```http
-GET /node/683263
-```
-_Response:_
-```json
-{
-  "ott_id": 683263,
-  "name": "Eutheria (in Deuterostomia)",
-  "parent_ott_id": 229558,
-  "child_count": null,
-  "has_metadata": true
-}
-```
+## Prerequisites
 
-**Get metadata for a specific node**
-```http
-GET /node/metadata/683263
-```
-_Response:_
-```json
-{
-  "ott_id": 683263,
-  "common_name": "Eutheria",
-  "description": "clade of therian mammals",
-  "full_description": "...the clade consisting of placental mammals and all therian mammals that are more closely related to placentals than to marsupials.... </p>",
-  "image_url": "http://commons.wikimedia.org/wiki/Special:FilePath/Placentalia.jpg",
-  "wiki_page_url": "https://en.wikipedia.org/wiki/Eutheria",
-  "rank": null,
-  "enriched_score": 1
-}
-```
+- Python 3.11+
+- PostgreSQL
+- Node.js 18+
 
-**Get lineage (ancestry) for a node**
-```http
-GET /tree/lineage/683263
-```
-_Response:_
-```json
-{
-  "lineage": [
-    { "ott_id": 691846, "name": "Metazoa" },
-    { "ott_id": 641038, "name": "Eumetazoa" },
-    { "ott_id": 244265, "name": "Mammalia" },
-    { "ott_id": 683263, "name": "Eutheria (in Deuterostomia)" }
-  ]
-}
-```
+## How to Build the Database
 
+### 1. Install Python dependencies
 
-## How to Run
-
-> **Set the `POSTGRES_URL` environment variable to point to your PostgreSQL instance**
-> The application raises a `RuntimeError` at startup if this variable is missing.
-
-Example:
 ```bash
-export POSTGRES_URL=postgresql://username:password@localhost:5432/cladecanvas
+pip install -r requirements.txt
 ```
-Or on Windows:
+
+### 2. Configure the database connection
+
+The application raises a `RuntimeError` at startup if `POSTGRES_URL` is missing.
+
+Set the `POSTGRES_URL` environment variable:
+
+```bash
+export POSTGRES_URL=postgresql://user:pass@localhost:5432/cladecanvas
+```
+
+On Windows:
 ```cmd
-set POSTGRES_URL=postgresql://username:password@localhost:5432/cladecanvas
+set POSTGRES_URL=postgresql://user:pass@localhost:5432/cladecanvas
 ```
 
-### 1. Load the OpenTree structure and initialize the DB
+Or create a `.env` file in the project root (loaded automatically by `python-dotenv`).
+
+### 3. Download the synthesis tree
+
+Fetches the Metazoa subtree from the OToL arguson API and writes `data/metazoa_nodes_synth.csv`. Takes roughly 45 minutes due to API rate limits.
+
 ```bash
-python -m scripts.fetch_otol
-python -m scripts.populate_db --limit 0 --max-batches 0 # loads CSV into PostgreSQL
+python -m cladecanvas.fetch_otol
 ```
 
-### 2. Run workers to populate the database
+The download proceeds in waves — each wave expands truncated nodes from the previous one until the full tree is captured. Synthetic MRCA nodes get readable names derived from `descendant_name_list` (e.g. "Bilateria + Porifera" instead of `mrcaott42ott3989`).
+
+### 4. Load nodes into PostgreSQL
+
+```bash
+python -m scripts.populate_db --skip-enrich
+```
+
+This creates the `nodes` and `metadata` tables, then upserts all rows from the CSV. On subsequent runs it updates `name`, `num_tips`, and `parent_node_id` for existing nodes.
+
+If migrating from an older schema that used `ott_id` as the primary key:
+```bash
+python -m scripts.populate_db --migrate --skip-enrich
+```
+
+### 5. Enrich with Wikidata and Wikipedia
+
+Single-threaded (good for small batches):
+```bash
+python -m scripts.populate_db --limit 100 --max-batches 10
+```
+
+Parallel (faster, respects API rate limits):
 ```bash
 python -m scripts.run_workers --workers 8 --limit 100 --loops 100 --sleep 2
 ```
 
-> This will take a long time. There are 2.8M taxa in Metazoa alone, and we respect API limits from Wikidata and Wikipedia.
+Enrichment queries Wikidata for common names, descriptions, images, and taxonomic rank, then fetches Wikipedia introductions. There are ~1.7M taxon nodes, so full enrichment is a long-running process.
 
-### 3. Launch API server
+### 6. Alias MRCA nodes (optional)
+
+Maps familiar taxonomy names (e.g. "Arachnida", "Rotifera") onto synthetic MRCA nodes by querying the OToL `node_info` API. Taxa whose synthesis tree placement is a synthetic node get their name stored as `display_name`.
+
 ```bash
-uvicorn cladecanvas.api.main:app --reload
+python scripts/alias_mrca_nodes.py
 ```
-Then visit:
-- Swagger: http://127.0.0.1:8000/docs
-- ReDoc:   http://127.0.0.1:8000/redoc
 
-### 4. View results in notebook
+## Running the Application
+
+### API server
+
+```bash
+uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+- Swagger docs: http://localhost:8600/docs
+- ReDoc: http://localhost:8600/redoc
+
+### Frontend
+
+```bash
+cd cladecanvas/cladecanvas-ui
+npm install
+npm run dev
+```
+
+Create `cladecanvas/cladecanvas-ui/.env.local` if it doesn't exist:
+```
+NEXT_PUBLIC_API_BASE=http://localhost:8600
+```
+
+Then visit http://localhost:3000.
+
+## API Endpoints
+
+All node identifiers are strings: `ott{N}` for taxon nodes, `mrcaott{A}ott{B}` for synthetic nodes.
+
+### Tree
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /tree/root` | Root node of the tree |
+| `GET /tree/children/{node_id}` | Immediate children of a node |
+| `GET /tree/subtree/{node_id}?depth=N` | Subtree rooted at a node to depth N |
+| `GET /tree/lineage/{node_id}` | Ancestor chain from root to node |
+
+### Node
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /node/{node_id}` | Node structure (name, parent, child_count, num_tips, display_name) |
+| `GET /node/metadata/{node_id}` | Enriched metadata (common name, description, image, Wikipedia link) |
+| `GET /node/bulk?node_ids=...` | Batch metadata for multiple nodes |
+
+### Search
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /search?q=...` | Search metadata by common name or description |
+
+## Database Schema
+
+### `nodes`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `node_id` | TEXT PK | `ott{N}` or `mrcaott{A}ott{B}` |
+| `ott_id` | INTEGER | OTT taxonomy ID (NULL for synthetic nodes) |
+| `name` | TEXT | Taxon name or synthesized label from `descendant_name_list` |
+| `parent_node_id` | TEXT | Parent node reference |
+| `rank` | TEXT | Taxonomic rank (set during enrichment) |
+| `child_count` | INTEGER | Number of direct children |
+| `has_metadata` | INTEGER | 1 if enriched metadata exists |
+| `num_tips` | INTEGER | Descendant species count from synthesis tree |
+| `display_name` | TEXT | Taxonomy alias for MRCA nodes (set by `alias_mrca_nodes.py`) |
+
+### `metadata`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `node_id` | TEXT PK, FK | References `nodes.node_id` |
+| `ott_id` | INTEGER | OTT taxonomy ID |
+| `wikidata_q` | TEXT | Wikidata QID |
+| `common_name` | TEXT | English common name from Wikidata |
+| `description` | TEXT | Short Wikidata description |
+| `full_description` | TEXT | Wikipedia introduction (HTML) |
+| `image_url` | TEXT | Wikimedia Commons image URL |
+| `wiki_page_url` | TEXT | Wikipedia article URL |
+| `enriched_score` | FLOAT | 1.0 if description or image exists, else 0.0 |
+
+## Exploration
+
+The Jupyter notebook at [`notebooks/enrichment_overview.ipynb`](notebooks/enrichment_overview.ipynb) visualizes enrichment coverage, metadata availability, and displays image previews for enriched taxa.
+
 ```bash
 jupyter notebook notebooks/enrichment_overview.ipynb
 ```
-
-#### Notebooks Worth Exploring
-
-| Notebook                                                             | Description                                 |
-| -------------------------------------------------------------------- | ------------------------------------------- |
-| [`enrichment_overview.ipynb`](notebooks/enrichment_overview.ipynb)   | Stats, charts, and displays image previews, descriptions, and links for taxa |
-
-### 5. Front end visualization
-
-> Dev server instructions can be found in in [`cladecanvas/cladecanvas-ui/README.md`](cladecanvas/cladecanvas-ui/README.md). It queries the API server for data.
