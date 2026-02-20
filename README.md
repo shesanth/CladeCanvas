@@ -84,6 +84,14 @@ python -m scripts.populate_db --skip-enrich
 
 This creates the `nodes` and `metadata` tables, then upserts all rows from the CSV. On subsequent runs it updates `name`, `num_tips`, and `parent_node_id` for existing nodes.
 
+Schema changes are managed with [Alembic](https://alembic.sqlalchemy.org/):
+
+```bash
+alembic revision --autogenerate -m "describe your change"  # generate migration
+alembic upgrade head                                        # apply migrations
+alembic check                                               # verify no drift
+```
+
 ### 5. Enrich with Wikidata and Wikipedia
 
 Single-threaded (good for small batches):
@@ -106,26 +114,6 @@ Maps familiar taxonomy names (e.g. "Arachnida", "Planulozoa") onto synthetic MRC
 python scripts/discover_mrca_names.py --phase all --dry-run  # preview
 python scripts/discover_mrca_names.py --phase all             # write to DB
 ```
-
-## Database Migrations
-
-Schema changes are managed with [Alembic](https://alembic.sqlalchemy.org/). Never run raw `ALTER TABLE` — use the migration workflow instead.
-
-```bash
-# Create a new migration after changing schema.py
-alembic revision --autogenerate -m "describe your change"
-
-# Apply pending migrations
-alembic upgrade head
-
-# Check for unapplied schema drift
-alembic check
-
-# See current migration state
-alembic current
-```
-
-Alembic reads `POSTGRES_URL` from the environment (or `.env` file) — the same connection string used by the application.
 
 ## Running the Application
 
