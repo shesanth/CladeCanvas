@@ -1,5 +1,5 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import time
 import random
@@ -102,7 +102,7 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
             'image_thumb': image,
             'wiki_page_url': wiki_page,
             'rank': rank,
-            'last_updated': datetime.utcnow().isoformat(),
+            'last_updated': datetime.now(timezone.utc).isoformat(),
             'enriched_score': 1.0 if full_desc or image else 0.0
         })
 
@@ -157,7 +157,7 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
             'image_thumb': image,
             'wiki_page_url': wiki_page,
             'rank': rank,
-            'last_updated': datetime.utcnow().isoformat(),
+            'last_updated': datetime.now(timezone.utc).isoformat(),
             'enriched_score': 1.0 if full_desc or image else 0.0
         })
         fallback_hits += 1

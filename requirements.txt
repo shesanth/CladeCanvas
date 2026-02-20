@@ -3,6 +3,7 @@ fastapi>=0.115.0
 
 # Core database and metadata tools
 sqlalchemy>=2.0
+alembic>=1.13
 psycopg2-binary>=2.9
 pandas>=2.0
 requests>=2.31

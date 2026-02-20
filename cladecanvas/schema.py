@@ -1,5 +1,6 @@
-from sqlalchemy import MetaData, Table, Column, Integer, Text, ForeignKey, DateTime, Float
-from sqlalchemy import text as sa_text
+from sqlalchemy import (
+    MetaData, Table, Column, Index, Integer, Text, ForeignKey, DateTime, Float,
+)
 from cladecanvas.db import engine
 
 metadata = MetaData()
@@ -14,7 +15,7 @@ nodes = Table(
     Column("child_count", Integer),
     Column("has_metadata", Integer),
     Column("num_tips", Integer, nullable=True),
-    Column("display_name", Text, nullable=True)
+    Column("display_name", Text, nullable=True),
 )
 
 metadata_table = Table(
@@ -29,90 +30,17 @@ metadata_table = Table(
     Column("wiki_page_url", Text),
     Column("image_thumb", Text),
     Column("last_updated", DateTime),
-    Column("enriched_score", Float)
+    Column("enriched_score", Float),
 )
+
+# Partial unique indexes — expressed here so Alembic autogenerate can see them
+Index("ix_nodes_ott_id", nodes.c.ott_id,
+      unique=True, postgresql_where=nodes.c.ott_id.isnot(None))
+Index("ix_metadata_ott_id", metadata_table.c.ott_id,
+      unique=True, postgresql_where=metadata_table.c.ott_id.isnot(None))
 
 
 def initialize_postgres_db():
+    """Create tables and indexes if they don't exist. Idempotent."""
     metadata.create_all(engine)
-    with engine.connect() as conn:
-        conn.execute(sa_text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_nodes_ott_id "
-            "ON nodes(ott_id) WHERE ott_id IS NOT NULL"
-        ))
-        conn.execute(sa_text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_metadata_ott_id "
-            "ON metadata(ott_id) WHERE ott_id IS NOT NULL"
-        ))
-        conn.commit()
     print("Tables created.")
-
-
-def migrate_schema():
-    """Migrate an existing DB (ott_id INTEGER PK) to the new node_id TEXT PK schema.
-    Preserves all existing rows and metadata. Safe to re-run."""
-    with engine.connect() as conn:
-        # ── nodes ─────────────────────────────────────────────────────────────
-        conn.execute(sa_text(
-            "ALTER TABLE nodes ADD COLUMN IF NOT EXISTS node_id TEXT"
-        ))
-        conn.execute(sa_text(
-            "ALTER TABLE nodes ADD COLUMN IF NOT EXISTS parent_node_id TEXT"
-        ))
-        conn.execute(sa_text(
-            "UPDATE nodes SET node_id = 'ott' || ott_id::text "
-            "WHERE node_id IS NULL AND ott_id IS NOT NULL"
-        ))
-        conn.execute(sa_text(
-            "UPDATE nodes SET parent_node_id = 'ott' || parent_ott_id::text "
-            "WHERE parent_node_id IS NULL AND parent_ott_id IS NOT NULL"
-        ))
-        # Drop metadata FK that references nodes PK first (so we can swap the PK)
-        for row in conn.execute(sa_text("""
-            SELECT constraint_name FROM information_schema.table_constraints
-            WHERE table_name = 'metadata' AND constraint_type = 'FOREIGN KEY'
-        """)).fetchall():
-            conn.execute(sa_text(f"ALTER TABLE metadata DROP CONSTRAINT {row[0]}"))
-
-        # Drop old PK on ott_id, promote node_id
-        pk = conn.execute(sa_text("""
-            SELECT constraint_name FROM information_schema.table_constraints
-            WHERE table_name = 'nodes' AND constraint_type = 'PRIMARY KEY'
-        """)).fetchone()
-        if pk:
-            conn.execute(sa_text(f"ALTER TABLE nodes DROP CONSTRAINT {pk[0]}"))
-        conn.execute(sa_text("ALTER TABLE nodes ALTER COLUMN node_id SET NOT NULL"))
-        conn.execute(sa_text("ALTER TABLE nodes ADD PRIMARY KEY (node_id)"))
-        conn.execute(sa_text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_nodes_ott_id "
-            "ON nodes(ott_id) WHERE ott_id IS NOT NULL"
-        ))
-
-        # ── metadata ──────────────────────────────────────────────────────────
-        conn.execute(sa_text(
-            "ALTER TABLE metadata ADD COLUMN IF NOT EXISTS node_id TEXT"
-        ))
-        conn.execute(sa_text(
-            "UPDATE metadata SET node_id = 'ott' || ott_id::text "
-            "WHERE node_id IS NULL AND ott_id IS NOT NULL"
-        ))
-        # Drop FK and old PK
-        for row in conn.execute(sa_text("""
-            SELECT constraint_name FROM information_schema.table_constraints
-            WHERE table_name = 'metadata'
-            AND constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
-        """)).fetchall():
-            conn.execute(sa_text(f"ALTER TABLE metadata DROP CONSTRAINT {row[0]}"))
-        conn.execute(sa_text("ALTER TABLE metadata ALTER COLUMN node_id SET NOT NULL"))
-        conn.execute(sa_text("ALTER TABLE metadata ADD PRIMARY KEY (node_id)"))
-        conn.execute(sa_text(
-            "ALTER TABLE metadata ADD CONSTRAINT fk_metadata_nodes "
-            "FOREIGN KEY (node_id) REFERENCES nodes(node_id)"
-        ))
-        conn.execute(sa_text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_metadata_ott_id "
-            "ON metadata(ott_id) WHERE ott_id IS NOT NULL"
-        ))
-
-        conn.commit()
-    print("Schema migration complete.")

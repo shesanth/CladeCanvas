@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import text
 
 from cladecanvas.db import Session
-from cladecanvas.schema import initialize_postgres_db, migrate_schema, nodes, metadata_table
+from cladecanvas.schema import initialize_postgres_db, nodes, metadata_table
 from cladecanvas.enrich import fetch_wikidata
 
 DATA_CSV = Path("data/metazoa_nodes_synth.csv")
@@ -126,17 +126,11 @@ def main():
     parser.add_argument("--skip-load", action="store_true", help="Skip loading nodes from CSV")
     parser.add_argument("--skip-enrich", action="store_true", help="Skip metadata enrichment")
     parser.add_argument("--max-batches", type=int, default=None, help="Stop after this many batches")
-    parser.add_argument("--migrate", action="store_true",
-                        help="Run schema migration (ott_id PK → node_id PK) before loading")
     parser.add_argument("--priority", action="store_true",
                         help="Enrich high-importance taxa first (by num_tips)")
     parser.add_argument("--min-tips", type=int, default=1000,
                         help="Minimum num_tips for --priority enrichment (default: 1000)")
     args = parser.parse_args()
-
-    if args.migrate:
-        print("Running schema migration…")
-        migrate_schema()
 
     initialize_postgres_db()
     session = Session()
