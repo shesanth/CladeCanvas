@@ -117,7 +117,7 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
         sparql = f"""
 SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
   ?item wdt:P225 "{fallback_name}" .
-  ?item wdt:P31 wd:Q16521 .
+  ?item wdt:P31 ?type . FILTER(?type IN (wd:Q16521, wd:Q713623))
   OPTIONAL {{ ?item schema:description ?desc FILTER(LANG(?desc) = "en") }}
   OPTIONAL {{ ?item wdt:P18 ?image }}
   OPTIONAL {{ ?item wdt:P105 ?rank . ?rank rdfs:label ?rankLabel FILTER(LANG(?rankLabel) = "en") }}

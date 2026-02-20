@@ -51,9 +51,24 @@ def get_missing_ott_ids(session, limit):
           AND NOT EXISTS (
             SELECT 1 FROM metadata m WHERE m.node_id = n.node_id
           )
-        ORDER BY RANDOM()
+        ORDER BY n.num_tips DESC NULLS LAST
         LIMIT {limit}
     """))
+    return [row[0] for row in result.fetchall()]
+
+
+def get_priority_ott_ids(session, min_tips=1000):
+    """Return all un-enriched OTT IDs with num_tips >= min_tips, most important first."""
+    result = session.execute(text("""
+        SELECT n.ott_id
+        FROM nodes n
+        WHERE n.ott_id IS NOT NULL
+          AND n.num_tips >= :min_tips
+          AND NOT EXISTS (
+            SELECT 1 FROM metadata m WHERE m.node_id = n.node_id
+          )
+        ORDER BY n.num_tips DESC
+    """), {"min_tips": min_tips})
     return [row[0] for row in result.fetchall()]
 
 
@@ -72,7 +87,9 @@ def enrich_and_store_metadata(session, ott_ids):
                 record["node_id"] = node_id_map.get(record["ott_id"])
 
         # Deduplicate by node_id (last one wins)
-        deduped = {r["node_id"]: r for r in enriched if r.get("node_id")}.values()
+        metadata_columns = {c.name for c in metadata_table.columns}
+        deduped = {r["node_id"]: {k: v for k, v in r.items() if k in metadata_columns}
+                   for r in enriched if r.get("node_id")}.values()
 
         if deduped:
             insert_stmt = pg_insert(metadata_table).values(list(deduped))
@@ -85,6 +102,16 @@ def enrich_and_store_metadata(session, ott_ids):
                 set_=update_fields
             )
             session.execute(stmt)
+
+            # Update rank and has_metadata on nodes table
+            for record in enriched:
+                nid = record.get("node_id") or node_id_map.get(record.get("ott_id"))
+                if nid:
+                    session.execute(
+                        text("UPDATE nodes SET rank = :rank, has_metadata = 1 WHERE node_id = :nid"),
+                        {"rank": record.get("rank"), "nid": nid}
+                    )
+
             session.commit()
             print(f"Enriched and stored metadata for {len(deduped)} taxa.")
     except Exception as e:
@@ -101,6 +128,10 @@ def main():
     parser.add_argument("--max-batches", type=int, default=None, help="Stop after this many batches")
     parser.add_argument("--migrate", action="store_true",
                         help="Run schema migration (ott_id PK → node_id PK) before loading")
+    parser.add_argument("--priority", action="store_true",
+                        help="Enrich high-importance taxa first (by num_tips)")
+    parser.add_argument("--min-tips", type=int, default=1000,
+                        help="Minimum num_tips for --priority enrichment (default: 1000)")
     args = parser.parse_args()
 
     if args.migrate:
@@ -113,6 +144,17 @@ def main():
     if not args.skip_load:
         print("Loading nodes from CSV…")
         load_nodes_from_csv(session)
+
+    if args.priority:
+        priority_ids = get_priority_ott_ids(session, args.min_tips)
+        if priority_ids:
+            print(f"Priority enrichment: {len(priority_ids)} taxa with num_tips >= {args.min_tips}")
+            for i in range(0, len(priority_ids), args.limit):
+                batch = priority_ids[i:i + args.limit]
+                print(f"  Priority batch {i//args.limit + 1}: {len(batch)} OTTs")
+                enrich_and_store_metadata(session, batch)
+        else:
+            print("No priority taxa to enrich.")
 
     if args.skip_enrich:
         session.close()
