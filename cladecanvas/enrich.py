@@ -1,8 +1,6 @@
 import requests
 from datetime import datetime, timezone
 import re
-import time
-import random
 from pathlib import Path
 
 WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql'
@@ -12,8 +10,6 @@ HEADERS = {
 
 MISS_LOG = Path("logs/missed_ott_ids.log")
 MISS_LOG.parent.mkdir(exist_ok=True)
-
-miss_log_file = open(MISS_LOG, "a")
 
 def clean_taxon_name(name: str) -> str:
     if not isinstance(name, str):
@@ -63,6 +59,7 @@ def fetch_wikipedia_extract(wikidata_q):
 def fetch_wikidata(ott_nodes):
     ott_id_map = {n['ott_id']: n['name'] for n in ott_nodes}
     ott_ids = list(ott_id_map.keys())
+    miss_log_file = open(MISS_LOG, "a")
 
     values = ' '.join(f'"{i}"' for i in ott_ids)
     sparql = f"""
@@ -110,8 +107,6 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
     for ott in ott_ids:
         if ott in matched_ott_ids:
             continue
-
-        # time.sleep(1.0 + random.uniform(0, 0.5))
 
         original_name = ott_id_map.get(ott, str(ott))
         fallback_name = clean_taxon_name(original_name)
@@ -162,5 +157,6 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
         })
         fallback_hits += 1
 
+    miss_log_file.close()
     print(f"[fetch_wikidata] P9157 hits: {len(matched_ott_ids)}, fallback hits: {fallback_hits}, missed: {len(ott_ids) - len(matched_ott_ids) - fallback_hits}")
     return results

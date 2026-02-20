@@ -44,7 +44,7 @@ def get_subtree(node_id: str, depth: int = 2, db: Session = Depends(get_db)):
             nodes_result.append(result._mapping)
         children = db.execute(select(nodes).where(nodes.c.parent_node_id == current_id)).fetchall()
         for child in children:
-            recurse(child.node_id, d - 1)
+            recurse(child._mapping["node_id"], d - 1)
 
     recurse(node_id, depth)
     return {"nodes": nodes_result}

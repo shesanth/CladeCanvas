@@ -10,15 +10,16 @@ import argparse
 
 def get_batch(session, limit):
     result = session.execute(text(f"""
-        SELECT n.ott_id, n.name
+        SELECT n.ott_id, n.name, n.node_id
         FROM nodes n
-        WHERE NOT EXISTS (
-            SELECT 1 FROM metadata m WHERE m.ott_id = n.ott_id
-        )
+        WHERE n.ott_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM metadata m WHERE m.node_id = n.node_id
+          )
         ORDER BY RANDOM()
         LIMIT {limit}
     """))
-    return [{'ott_id': row[0], 'name': row[1]} for row in result.fetchall()]
+    return [{'ott_id': row[0], 'name': row[1], 'node_id': row[2]} for row in result.fetchall()]
 
 def enrich_batch(worker_id, batch_size, sleep_time, loop_count):
     for i in range(loop_count):
@@ -32,37 +33,40 @@ def enrich_batch(worker_id, batch_size, sleep_time, loop_count):
 
             enriched = fetch_wikidata(batch)
             if enriched:
-                deduped = {row['ott_id']: row for row in enriched}.values()
+                # Attach node_id from the batch lookup
+                node_id_map = {b['ott_id']: b['node_id'] for b in batch}
+                for row in enriched:
+                    if 'node_id' not in row:
+                        row['node_id'] = node_id_map.get(row['ott_id'])
 
                 metadata_columns = {c.name for c in metadata_table.columns}
-                sanitized = [{k: row[k] for k in row if k in metadata_columns} for row in deduped]
+                deduped = {row['node_id']: {k: v for k, v in row.items() if k in metadata_columns}
+                           for row in enriched if row.get('node_id')}.values()
 
-                insert_stmt = pg_insert(metadata_table).values(sanitized)
-
+                insert_stmt = pg_insert(metadata_table).values(list(deduped))
                 update_fields = {
                     k: insert_stmt.excluded[k]
-                    for k in metadata_columns
-                    if k != "ott_id"
+                    for k in next(iter(deduped)) if k != "node_id"
                 }
-
                 stmt = insert_stmt.on_conflict_do_update(
-                    index_elements=["ott_id"],
+                    index_elements=["node_id"],
                     set_=update_fields
                 )
                 session.execute(stmt)
 
-                # Update nodes.rank and has_metadata
-                for row in deduped:
-                    session.execute(
-                        text("UPDATE nodes SET rank = :rank, has_metadata = 1 WHERE ott_id = :ott"),
-                        {"rank": row.get("rank"), "ott": row["ott_id"]}
-                    )
+                for row in enriched:
+                    nid = row.get('node_id') or node_id_map.get(row.get('ott_id'))
+                    if nid:
+                        session.execute(
+                            text("UPDATE nodes SET rank = :rank, has_metadata = 1 WHERE node_id = :nid"),
+                            {"rank": row.get("rank"), "nid": nid}
+                        )
 
                 session.commit()
-                print(f"[Worker {worker_id}] Enriched {len(deduped)} entries.")
+                print(f"[Worker {worker_id}] Enriched {len(list(deduped))} entries.")
         except Exception as e:
             import traceback
-            print(f"[Worker {worker_id}] ❌ Error: {e}")
+            print(f"[Worker {worker_id}] Error: {e}")
             traceback.print_exc()
             session.rollback()
         finally:
