@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import DOMPurify from "dompurify";
 import dynamic from "next/dynamic";
 
@@ -12,6 +12,13 @@ export type Node = {
   parent_node_id?: string;
   child_count?: number;
   has_metadata?: boolean;
+  num_tips?: number;
+  display_name?: string;
+};
+
+type BreadcrumbEntry = {
+  node: Node;
+  collapsedCount: number; // 1 = single node, >1 = collapsed synthetic run
 };
 
 export type Metadata = {
@@ -31,9 +38,10 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Metadata[]>([]);
   const [selectedNode, setSelectedNode] = useState<Metadata | null>(null);
+  const [activeNode, setActiveNode] = useState<Node | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [treeRootNodeId, setTreeRootNodeId] = useState<string>("ott691846"); // Metazoa
-  const [breadcrumb, setBreadcrumb] = useState<Node[]>([]);
+  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
   const API = process.env.NEXT_PUBLIC_API_BASE;
 
   const fetchNode = (nodeId: string) => {
@@ -47,19 +55,48 @@ export default function Page() {
       .catch(() => setSelectedNode(null));
   };
 
-  const buildBreadcrumbTrail = async (startingNodeId: string) => {
-    try {
-      const res = await fetch(`${API}/tree/lineage/${startingNodeId}`);
-      if (!res.ok) return;
-      const { lineage } = await res.json();
-      setBreadcrumb(lineage);
+  const isSynthetic = (node: Node) => node.node_id.startsWith("mrcaott");
 
-      if (lineage.length > 1) {
-        const parent = lineage[lineage.length - 2];
-        setTreeRootNodeId(parent.node_id);
+  const collapseBreadcrumb = (lineage: Node[]): BreadcrumbEntry[] => {
+    const entries: BreadcrumbEntry[] = [];
+    let i = 0;
+    while (i < lineage.length) {
+      if (isSynthetic(lineage[i])) {
+        const start = i;
+        while (i < lineage.length && isSynthetic(lineage[i])) i++;
+        entries.push({ node: lineage[start], collapsedCount: i - start });
+      } else {
+        entries.push({ node: lineage[i], collapsedCount: 1 });
+        i++;
       }
+    }
+    return entries;
+  };
+
+  const fetchLineage = async (nodeId: string): Promise<Node[] | null> => {
+    try {
+      const res = await fetch(`${API}/tree/lineage/${nodeId}`);
+      if (!res.ok) return null;
+      const { lineage } = await res.json();
+      return lineage;
     } catch {
-      // silently fail for now
+      return null;
+    }
+  };
+
+  // Only updates breadcrumb — does NOT re-root the tree
+  const buildBreadcrumbTrail = async (nodeId: string) => {
+    const lineage = await fetchLineage(nodeId);
+    if (lineage) setBreadcrumb(collapseBreadcrumb(lineage));
+  };
+
+  // Updates breadcrumb AND re-roots the tree to the target node's direct parent
+  const navigateToNode = async (nodeId: string) => {
+    const lineage = await fetchLineage(nodeId);
+    if (!lineage) return;
+    setBreadcrumb(collapseBreadcrumb(lineage));
+    if (lineage.length > 1) {
+      setTreeRootNodeId(lineage[lineage.length - 2].node_id);
     }
   };
 
@@ -92,6 +129,7 @@ export default function Page() {
         api={API!}
         onSelect={(node) => {
           setActiveNodeId(node.node_id);
+          setActiveNode(node as Node);
           fetchNode(node.node_id);
           buildBreadcrumbTrail(node.node_id);
         }}
@@ -108,9 +146,10 @@ export default function Page() {
                 className="cursor-pointer hover:bg-hovergray p-1"
                 onClick={() => {
                   setSelectedNode(res);
+                  setActiveNode({ node_id: res.node_id, name: res.common_name || res.node_id, ott_id: res.ott_id });
                   setActiveNodeId(res.node_id);
                   setSearchResults([]);
-                  buildBreadcrumbTrail(res.node_id);
+                  navigateToNode(res.node_id);
                 }}
               >
               <div className="cursor-pointer hover:bg-hovergray p-1">
@@ -125,18 +164,22 @@ export default function Page() {
 
         {breadcrumb.length > 1 && (
           <div className="text-sm text-[#777]">
-            {breadcrumb.map((node, idx) => (
-              <span key={node.node_id}>
+            {breadcrumb.map((entry, idx) => (
+              <span key={entry.node.node_id}>
                 {idx > 0 && " › "}
                 <span
-                  className="cursor-pointer hover:underline"
+                  className={`cursor-pointer hover:underline ${
+                    entry.collapsedCount > 1 ? "italic text-gray-400" : ""
+                  }`}
                   onClick={() => {
-                    setActiveNodeId(node.node_id);
-                    fetchNode(node.node_id);
-                    buildBreadcrumbTrail(node.node_id);
+                    setActiveNodeId(entry.node.node_id);
+                    setActiveNode(entry.node);
+                    fetchNode(entry.node.node_id);
+                    navigateToNode(entry.node.node_id);
                   }}
                 >
-                  {node.name}
+                  {entry.node.display_name || entry.node.name}
+                  {entry.collapsedCount > 2 && " …"}
                 </span>
               </span>
             ))}
@@ -171,6 +214,23 @@ export default function Page() {
               >
                 View on Wikipedia
               </a>
+            )}
+          </div>
+        ) : activeNode && isSynthetic(activeNode) ? (
+          <div className="bg-white/70 shadow rounded-lg p-6 border border-[#e1dfda]">
+            <h2 className="text-2xl font-bold mb-2">
+              {activeNode.display_name || activeNode.name}
+            </h2>
+            {activeNode.display_name && (
+              <p className="text-sm text-gray-500 italic mb-1">{activeNode.name}</p>
+            )}
+            <p className="text-sm text-gray-500 mb-1">
+              Branching point in the synthesis tree
+            </p>
+            {activeNode.num_tips && (
+              <p className="text-gray-700">
+                {activeNode.num_tips.toLocaleString()} descendant species
+              </p>
             )}
           </div>
         ) : (

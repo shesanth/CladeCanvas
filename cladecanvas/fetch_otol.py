@@ -51,12 +51,21 @@ def _parse_arguson(node: dict, parent_node_id: str | None,
         seen.add(nid)
         taxon = node.get('taxon', {})
         ott_id = taxon.get('ott_id')
-        name = taxon.get('name', nid)
+        num_tips = node.get('num_tips')
+
+        if taxon:
+            name = taxon.get('name', nid)
+        else:
+            # Synthetic MRCA node — use descendant_name_list for a readable label
+            desc = node.get('descendant_name_list', [])
+            name = ' + '.join(desc[:2]) if desc else nid
+
         rows.append({
             'node_id': nid,
             'ott_id': ott_id,
             'name': name,
             'parent_node_id': parent_node_id,
+            'num_tips': num_tips,
         })
 
     # Process children if present in response
@@ -111,7 +120,7 @@ def download_synth_arguson():
 
     # Write CSV
     with open(CSV_PATH, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['node_id', 'ott_id', 'name', 'parent_node_id'])
+        writer = csv.DictWriter(f, fieldnames=['node_id', 'ott_id', 'name', 'parent_node_id', 'num_tips'])
         writer.writeheader()
         writer.writerows(rows)
     n_synth = sum(1 for r in rows if r['ott_id'] is None)

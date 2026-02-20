@@ -21,6 +21,8 @@ class TreeNode(BaseModel):
     parent_node_id: Optional[str] = None
     child_count: Optional[int]
     has_metadata: Optional[bool]
+    num_tips: Optional[int] = None
+    display_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

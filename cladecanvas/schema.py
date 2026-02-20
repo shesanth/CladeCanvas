@@ -12,7 +12,9 @@ nodes = Table(
     Column("parent_node_id", Text),
     Column("rank", Text),
     Column("child_count", Integer),
-    Column("has_metadata", Integer)
+    Column("has_metadata", Integer),
+    Column("num_tips", Integer, nullable=True),
+    Column("display_name", Text, nullable=True)
 )
 
 metadata_table = Table(

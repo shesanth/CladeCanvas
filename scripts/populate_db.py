@@ -18,16 +18,21 @@ logging.basicConfig(filename=LOG_FILE, level=logging.ERROR, format='%(asctime)s 
 
 
 def load_nodes_from_csv(session, batch_size=10000):
-    df = pd.read_csv(DATA_CSV, dtype={"ott_id": "Int64"})
+    df = pd.read_csv(DATA_CSV, dtype={"ott_id": "Int64", "num_tips": "Int64"})
     # Convert pd.NA to None so SQLAlchemy handles nullable int correctly
     records = df.where(pd.notna(df), other=None).to_dict("records")
     n_synth = sum(1 for r in records if r.get("ott_id") is None)
     total_inserted = 0
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
+        excluded = pg_insert(nodes).excluded
         stmt = pg_insert(nodes).values(batch).on_conflict_do_update(
             index_elements=["node_id"],
-            set_={"parent_node_id": pg_insert(nodes).excluded.parent_node_id}
+            set_={
+                "parent_node_id": excluded.parent_node_id,
+                "name": excluded.name,
+                "num_tips": excluded.num_tips,
+            }
         )
         session.execute(stmt)
         session.commit()
