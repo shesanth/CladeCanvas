@@ -52,7 +52,14 @@ def re_enrich_batch(session, nodes, batch_size=50):
         ott_nodes = [{'ott_id': n['ott_id'], 'name': n['name'], 'node_id': n['node_id']}
                      for n in batch]
 
-        enriched = fetch_wikidata(ott_nodes)
+        print(f"  Batch {i // batch_size + 1}: fetching {len(ott_nodes)} nodes...", flush=True)
+        try:
+            enriched = fetch_wikidata(ott_nodes)
+        except Exception as e:
+            print(f"  Batch {i // batch_size + 1}: FAILED — {e}", flush=True)
+            continue
+
+        print(f"  Batch {i // batch_size + 1}: got {len(enriched)} results", flush=True)
         if not enriched:
             continue
 
@@ -62,24 +69,24 @@ def re_enrich_batch(session, nodes, batch_size=50):
                 r['node_id'] = node_id_map.get(r['ott_id'])
 
         metadata_columns = {c.name for c in metadata_table.columns}
-        deduped = {r['node_id']: {k: v for k, v in r.items() if k in metadata_columns}
-                   for r in enriched if r.get('node_id')}.values()
+        deduped = list({r['node_id']: {k: v for k, v in r.items() if k in metadata_columns}
+                        for r in enriched if r.get('node_id')}.values())
 
         if deduped:
-            insert_stmt = pg_insert(metadata_table).values(list(deduped))
+            insert_stmt = pg_insert(metadata_table).values(deduped)
             update_fields = {
                 k: insert_stmt.excluded[k]
-                for k in next(iter(deduped)) if k != 'node_id'
+                for k in deduped[0] if k != 'node_id'
             }
             stmt = insert_stmt.on_conflict_do_update(
                 index_elements=['node_id'], set_=update_fields
             )
             session.execute(stmt)
             session.commit()
-            total_fixed += len(list(deduped))
+            total_fixed += len(deduped)
 
-        print(f"  Batch {i // batch_size + 1}: re-enriched {len(list(deduped))} nodes")
-        time.sleep(1)  # respect Wikidata rate limits
+        print(f"  Batch {i // batch_size + 1}: re-enriched {len(deduped)} nodes")
+        time.sleep(1)
 
     return total_fixed
 
