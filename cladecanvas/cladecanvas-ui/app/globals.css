@@ -1,37 +1,85 @@
 @import "tailwindcss";
 
-@layer utilities {
-  .search-bar {
-    @apply border bg-[#faf9f6] border-[#d6d3cc] text-[#1f1f1f] placeholder:text-[#777] px-3 py-1 rounded;
-  }
-  .input-light {
-    @apply bg-[#f4f3ef] border-[#d6d3cc] text-[#2e2e2e] placeholder:text-[#777];
-  }
-  .title-heading {
-    @apply text-3xl font-bold leading-tight tracking-normal mt-2 pl-2;
-  }
-  .text-main {
-    @apply text-[#1f1f1f];
-  }
-  .text-muted {
-    @apply text-[#555];
-  }
-  .link-highlight {
-    @apply text-[#3c6e71] underline hover:text-[#2a575e] font-medium;
-  }
-  .text-highlight {
-    @apply text-[#3c6e71];
-  }
-  .bg-paper {
-    @apply bg-[#f4f3ef];
-  }
-  .text-ink {
-    @apply text-[#2e2e2e];
-  }
-  .border-softgray {
-    @apply border-[#d6d3cc];
-  }
-  .hover\:bg-hovergray:hover {
-    @apply hover:bg-[#eceae4];
-  }
+:root {
+  /* Paper & ink */
+  --color-paper: #f5f0e8;
+  --color-paper-light: #faf7f2;
+  --color-ink: #2c2416;
+  --color-ink-muted: #7a6e5d;
+
+  /* Cladogram */
+  --clade-branch: #5c4033;
+  --clade-branch-active: #8b6914;
+  --clade-node-ring: #8b6914;
+  --clade-node-dot: #5c4033;
+
+  /* Accents */
+  --color-accent: #3c6e71;
+  --color-accent-hover: #2a575e;
+  --color-border: #d6d0c4;
+}
+
+/* Shimmer animation for loading skeletons */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-paper) 0%,
+    var(--color-paper-light) 50%,
+    var(--color-paper) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Scrollbar styling for children cards */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--color-paper);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-muted);
+}
+
+/* Prose overrides for reader panel */
+.reader-prose {
+  color: var(--color-ink);
+  line-height: 1.7;
+}
+.reader-prose a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.reader-prose a:hover {
+  color: var(--color-accent-hover);
+}
+.reader-prose p {
+  margin-bottom: 0.75em;
+}
+.reader-prose h2,
+.reader-prose h3 {
+  font-family: var(--font-playfair), serif;
+  color: var(--color-ink);
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+.reader-prose ul,
+.reader-prose ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.reader-prose li {
+  margin-bottom: 0.25em;
 }
