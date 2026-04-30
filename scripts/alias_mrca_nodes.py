@@ -8,7 +8,7 @@ as display_name on that MRCA node.
 
 import time
 import requests
-from cladecanvas.db import Session
+from cladecanvas.db import Session, assert_writes_allowed
 from sqlalchemy import text
 
 OTOL_API = "https://api.opentreeoflife.org/v3/tree_of_life/node_info"
@@ -18,6 +18,7 @@ RANKS = ("phylum", "subphylum", "superclass", "class", "subclass",
 
 
 def find_aliases():
+    assert_writes_allowed("MRCA alias discovery")
     rank_list = ", ".join(f"'{r}'" for r in RANKS)
     with Session() as s:
         rows = s.execute(text(f"""

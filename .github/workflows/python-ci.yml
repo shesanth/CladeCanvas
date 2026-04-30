@@ -15,3 +15,5 @@ jobs:
       - run: . .venv/bin/activate && pip install -e .
       - name: Run only unit tests (skip @api-marked tests)
         run: . .venv/bin/activate && pytest -m "not api" -q
+      - name: Run dev SQLite API smoke tests
+        run: . .venv/bin/activate && CLADECANVAS_DEV_SQLITE=1 pytest -m api tests/test_dev_sqlite_api.py -q
