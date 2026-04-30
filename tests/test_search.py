@@ -1,8 +1,13 @@
 import pytest
+from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from cladecanvas.api.routes.search import _extract_snippet
+from cladecanvas.api.routes.search import search_nodes
+from cladecanvas.api.search_ranking import rank_search_row, sort_ranked_results
+from cladecanvas.schema import metadata, metadata_table, nodes
 
-
-# ── _extract_snippet ──────────────────────────────────────────────────────────
 
 class TestExtractSnippet:
     def test_exact_match_short_text(self):
@@ -18,21 +23,21 @@ class TestExtractSnippet:
         padding = "x" * 200
         text = f"{padding}TARGET{padding}"
         result = _extract_snippet(text, "TARGET")
-        assert result.startswith("…")
-        assert result.endswith("…")
+        assert result.startswith("...")
+        assert result.endswith("...")
         assert "TARGET" in result
 
     def test_no_leading_ellipsis_near_start(self):
         text = "cat " + "x" * 200
         result = _extract_snippet(text, "cat")
-        assert not result.startswith("…")
-        assert result.endswith("…")
+        assert not result.startswith("...")
+        assert result.endswith("...")
 
     def test_no_trailing_ellipsis_near_end(self):
         text = "x" * 200 + " cat"
         result = _extract_snippet(text, "cat")
-        assert result.startswith("…")
-        assert not result.endswith("…")
+        assert result.startswith("...")
+        assert not result.endswith("...")
 
     def test_empty_text(self):
         assert _extract_snippet("", "cat") == ""
@@ -46,61 +51,185 @@ class TestExtractSnippet:
         assert "$100.00" in result
 
 
-# ── Search ranking (unit-level, no DB) ────────────────────────────────────────
-
 class TestSearchRanking:
-    """Verify the CASE tier logic assigns correct match_field values."""
+    def _row(
+        self,
+        node_id,
+        common_name=None,
+        display_name=None,
+        name=None,
+        description=None,
+        full_description=None,
+        enriched_score=0.0,
+    ):
+        return {
+            "node_id": node_id,
+            "ott_id": None,
+            "common_name": common_name,
+            "display_name": display_name,
+            "name": name,
+            "description": description,
+            "full_description": full_description,
+            "image_url": None,
+            "wiki_page_url": None,
+            "enriched_score": enriched_score,
+        }
 
-    def _make_row(self, common_name=None, description=None, full_description=None):
-        """Simulate what the search endpoint does with a tier assignment."""
-        from cladecanvas.api.routes.search import _extract_snippet
+    def test_exact_common_name_wins_golden_query(self):
+        rows = [
+            self._row("2", display_name="cat", name="Felis"),
+            self._row("1", common_name="cat", description="A small feline."),
+            self._row("3", common_name="catfish", description="A ray-finned fish."),
+        ]
+        ranked = sort_ranked_results([rank_search_row(row, "cat") for row in rows])
 
-        if common_name and "test" in common_name.lower():
-            tier = 1
-        elif description and "test" in description.lower():
-            tier = 2
-        elif full_description and "test" in full_description.lower():
-            tier = 3
-        else:
-            return None
+        assert [result.node_id for result in ranked] == ["1", "2", "3"]
+        assert ranked[0].match_type == "exact_common_name"
+        assert ranked[0].score_breakdown["base"] == 1000.0
 
-        if tier == 1:
-            return "common_name", common_name
-        elif tier == 2:
-            return "description", description
-        else:
-            return "full_description", _extract_snippet(full_description or "", "test")
+    def test_display_name_alias_beats_prefix(self):
+        rows = [
+            self._row("prefix", common_name="arachnid hunters"),
+            self._row("alias", display_name="Arachnida", name="mrcaott1ott2"),
+        ]
+        ranked = sort_ranked_results([rank_search_row(row, "arachnida") for row in rows])
 
-    def test_common_name_wins(self):
-        field, snippet = self._make_row(
-            common_name="Test animal",
-            description="A test creature",
-            full_description="Long test article",
+        assert [result.node_id for result in ranked] == ["alias", "prefix"]
+        assert ranked[0].match_type == "display_name_alias"
+        assert ranked[0].match_field == "display_name"
+
+    def test_prefix_beats_description(self):
+        rows = [
+            self._row("description", description="A dolphin-like vertebrate."),
+            self._row("prefix", common_name="dolphinfish"),
+        ]
+        ranked = sort_ranked_results([rank_search_row(row, "dolphin") for row in rows])
+
+        assert [result.node_id for result in ranked] == ["prefix", "description"]
+        assert ranked[0].match_type == "prefix"
+
+    def test_description_beats_full_description(self):
+        rows = [
+            self._row("full", full_description="A long article about bats and echolocation."),
+            self._row("short", description="A bat-like mammal."),
+        ]
+        ranked = sort_ranked_results([rank_search_row(row, "bat") for row in rows])
+
+        assert [result.node_id for result in ranked] == ["short", "full"]
+        assert ranked[0].match_type == "description"
+
+    def test_synonym_support(self):
+        result = rank_search_row(
+            self._row("human", common_name="Homo sapiens", description="A primate."),
+            "human",
         )
-        assert field == "common_name"
-        assert snippet == "Test animal"
 
-    def test_description_when_no_common_name_match(self):
-        field, snippet = self._make_row(
-            common_name="Cat",
-            description="A test creature",
-            full_description="Long test article",
-        )
-        assert field == "description"
+        assert result is not None
+        assert result.match_type == "prefix"
+        assert result.score_breakdown["matched_term"] == "homo sapiens"
+        assert result.score_breakdown["synonym_boost"] > 0
 
-    def test_full_description_fallback(self):
-        field, snippet = self._make_row(
-            common_name="Cat",
-            description="A feline",
-            full_description="Some long article mentioning test data",
+    def test_typo_tolerance(self):
+        result = rank_search_row(
+            self._row("dolphin", common_name="dolphin"),
+            "dolpin",
         )
-        assert field == "full_description"
-        assert "test" in snippet.lower()
+
+        assert result is not None
+        assert result.match_type == "typo"
+        assert result.score_breakdown["similarity_boost"] > 0
 
     def test_no_match_returns_none(self):
-        result = self._make_row(
-            common_name="Cat",
-            description="A feline",
-            full_description="Nothing relevant",
+        assert rank_search_row(self._row("cat", common_name="Cat"), "otter") is None
+
+
+class TestSearchRoute:
+    def _sqlite_session(self):
+        engine = create_engine("sqlite:///:memory:")
+        metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        session.execute(
+            nodes.insert(),
+            [
+                {
+                    "node_id": "cat",
+                    "ott_id": 1,
+                    "name": "Felis catus",
+                    "parent_node_id": None,
+                    "rank": "species",
+                    "child_count": 0,
+                    "has_metadata": 1,
+                    "num_tips": 1,
+                    "display_name": "Felis catus",
+                },
+                {
+                    "node_id": "dog",
+                    "ott_id": 2,
+                    "name": "Canis lupus familiaris",
+                    "parent_node_id": None,
+                    "rank": "species",
+                    "child_count": 0,
+                    "has_metadata": 1,
+                    "num_tips": 1,
+                    "display_name": "Canis lupus familiaris",
+                },
+            ],
         )
-        assert result is None
+        session.execute(
+            metadata_table.insert(),
+            [
+                {
+                    "node_id": "cat",
+                    "ott_id": 1,
+                    "common_name": "Cat",
+                    "description": "A small domesticated feline.",
+                    "full_description": "Cats are small carnivorous mammals.",
+                    "image_url": None,
+                    "wiki_page_url": None,
+                    "enriched_score": 0.5,
+                },
+                {
+                    "node_id": "dog",
+                    "ott_id": 2,
+                    "common_name": "Dog",
+                    "description": "A friendly canine.",
+                    "full_description": "Dogs are loyal mammals.",
+                    "image_url": None,
+                    "wiki_page_url": None,
+                    "enriched_score": 0.4,
+                },
+            ],
+        )
+        session.commit()
+        return session
+
+    def test_sqlite_search_uses_like_candidates_without_similarity(self):
+        session = self._sqlite_session()
+        try:
+            results = search_nodes("cat", session)
+        finally:
+            session.close()
+
+        assert [result.node_id for result in results] == ["cat"]
+        assert results[0].match_type == "exact_common_name"
+
+    def test_query_is_stripped_before_searching(self):
+        session = self._sqlite_session()
+        try:
+            results = search_nodes("  cat  ", session)
+        finally:
+            session.close()
+
+        assert [result.node_id for result in results] == ["cat"]
+
+    def test_whitespace_query_returns_clear_422(self):
+        session = self._sqlite_session()
+        try:
+            with pytest.raises(HTTPException) as exc_info:
+                search_nodes("  ", session)
+        finally:
+            session.close()
+
+        assert exc_info.value.status_code == 422
+        assert "non-whitespace" in exc_info.value.detail

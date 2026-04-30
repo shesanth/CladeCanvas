@@ -1,81 +1,108 @@
-import re
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, or_, case
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.orm import Session
-from cladecanvas.schema import metadata_table
-from cladecanvas.api.models import SearchResult
-from cladecanvas.api.deps import get_db
 from typing import List
+
+from cladecanvas.api.deps import get_db
+from cladecanvas.api.models import SearchResult
+from cladecanvas.api.search_ranking import (
+    MAX_CANDIDATES,
+    POSTGRES_TRIGRAM_THRESHOLD,
+    SEARCH_LIMIT,
+    expand_query_terms,
+    extract_snippet,
+    normalize_search_text,
+    rank_search_row,
+    sort_ranked_results,
+)
+from cladecanvas.schema import metadata_table, nodes
 
 router = APIRouter()
 
-SNIPPET_RADIUS = 80
-
 
 def _extract_snippet(text: str, query: str) -> str:
-    """Pull a window around the first match, with '...' on truncated edges."""
-    if not text:
-        return ""
-    match = re.search(re.escape(query), text, re.IGNORECASE)
-    if not match:
-        return ""
-    start = max(0, match.start() - SNIPPET_RADIUS)
-    end = min(len(text), match.end() + SNIPPET_RADIUS)
-    snippet = text[start:end].strip()
-    if start > 0:
-        snippet = "…" + snippet
-    if end < len(text):
-        snippet = snippet + "…"
-    return snippet
+    return extract_snippet(text, expand_query_terms(query))
+
+
+def _search_dialect(db: Session) -> str:
+    bind = db.get_bind()
+    return bind.dialect.name if bind is not None else ""
 
 
 @router.get("", response_model=List[SearchResult])
 def search_nodes(q: str = Query(..., min_length=2), db: Session = Depends(get_db)):
-    c = metadata_table.c
-    pattern = f"%{q}%"
+    normalized_query = normalize_search_text(q)
+    if len(normalized_query) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="Search query must contain at least 2 non-whitespace characters.",
+        )
 
-    # Tier: common_name > description > full_description
-    rank_expr = case(
-        (c.common_name.ilike(pattern), 1),
-        (c.description.ilike(pattern), 2),
-        (c.full_description.ilike(pattern), 3),
+    query_terms = expand_query_terms(normalized_query)
+    use_postgres_similarity = _search_dialect(db) == "postgresql"
+    c = metadata_table.c
+    n = nodes.c
+
+    text_columns = (
+        c.common_name,
+        n.display_name,
+        n.name,
+        c.description,
+        c.full_description,
+    )
+
+    filters = []
+    prefix_filters = []
+    for term in query_terms:
+        contains_pattern = f"%{term}%"
+        prefix_pattern = f"{term}%"
+        term_prefix_filters = [
+            column.ilike(prefix_pattern)
+            for column in (c.common_name, n.display_name, n.name)
+        ]
+        filters.extend(column.ilike(contains_pattern) for column in text_columns)
+        prefix_filters.extend(term_prefix_filters)
+        filters.extend(term_prefix_filters)
+        if use_postgres_similarity:
+            filters.extend(
+                func.similarity(func.coalesce(column, literal("")), term) >= POSTGRES_TRIGRAM_THRESHOLD
+                for column in (c.common_name, n.display_name, n.name)
+            )
+
+    coarse_rank = case(
+        (func.lower(c.common_name).in_(query_terms), 1),
+        (or_(func.lower(n.display_name).in_(query_terms), func.lower(n.name).in_(query_terms)), 2),
+        (or_(*prefix_filters), 3),
+        else_=4,
     )
 
     stmt = (
-        select(metadata_table, rank_expr.label("_tier"))
-        .where(or_(
-            c.common_name.ilike(pattern),
-            c.description.ilike(pattern),
-            c.full_description.ilike(pattern),
-        ))
-        .order_by(rank_expr, c.node_id)
-        .limit(25)
+        select(
+            c.node_id,
+            c.ott_id,
+            c.common_name,
+            n.display_name,
+            n.name,
+            c.description,
+            c.full_description,
+            c.image_url,
+            c.wiki_page_url,
+            c.enriched_score,
+        )
+        .select_from(metadata_table.join(nodes, c.node_id == n.node_id))
+        .where(or_(*filters))
+        .order_by(coarse_rank, c.node_id)
+        .limit(MAX_CANDIDATES)
     )
-    rows = db.execute(stmt).fetchall()
 
-    results = []
+    rows = db.execute(stmt).mappings().fetchall()
+    ranked = []
     for row in rows:
-        m = row._mapping
-        tier = m["_tier"]
-        if tier == 1:
-            match_field = "common_name"
-            snippet = m["common_name"] or ""
-        elif tier == 2:
-            match_field = "description"
-            snippet = m["description"] or ""
-        else:
-            match_field = "full_description"
-            snippet = _extract_snippet(m["full_description"] or "", q)
+        result = rank_search_row(row, normalized_query)
+        if result:
+            ranked.append(result)
 
-        results.append(SearchResult(
-            node_id=m["node_id"],
-            ott_id=m["ott_id"],
-            common_name=m["common_name"],
-            description=m["description"],
-            image_url=m["image_url"],
-            wiki_page_url=m["wiki_page_url"],
-            enriched_score=m["enriched_score"],
-            match_field=match_field,
-            match_snippet=snippet,
-        ))
-    return results
+    return [
+        SearchResult(**result.__dict__)
+        for result in sort_ranked_results(ranked)[:SEARCH_LIMIT]
+    ]
