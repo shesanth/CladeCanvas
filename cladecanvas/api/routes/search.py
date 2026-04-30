@@ -37,20 +37,14 @@ def _search_dialect(db: Session) -> str:
 
 @router.get("", response_model=List[SearchResult])
 def search_nodes(
+    response: Response,
     q: str = Query(..., min_length=2, max_length=80),
-    db: Session = Depends(get_db),
-    response: Response | None = None,
     limit: int = Query(25, ge=1, le=MAX_SEARCH_LIMIT),
     offset: int = Query(0, ge=0, le=10000),
+    db: Session = Depends(get_db),
 ):
-    if response is not None:
-        set_public_cache_headers(response)
-    normalized_query = normalize_search_text(q)
-    if len(normalized_query) < 2:
-        raise HTTPException(
-            status_code=422,
-            detail="Search query must contain at least 2 non-whitespace characters.",
-        )
+    set_public_cache_headers(response)
+    normalized_query = _normalize_query_or_422(q)
 
     def load_search_results():
         return _search_nodes(normalized_query, limit, offset, db)
@@ -59,6 +53,16 @@ def search_nodes(
         ("search", normalized_query.casefold(), limit, offset),
         load_search_results,
     )
+
+
+def _normalize_query_or_422(q: str) -> str:
+    normalized_query = normalize_search_text(q)
+    if len(normalized_query) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="Search query must contain at least 2 non-whitespace characters.",
+        )
+    return normalized_query
 
 
 def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchResult]:

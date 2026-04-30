@@ -4,7 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from cladecanvas.api.routes.search import _extract_snippet
-from cladecanvas.api.routes.search import search_nodes
+from cladecanvas.api.routes.search import _normalize_query_or_422
+from cladecanvas.api.routes.search import _search_nodes
 from cladecanvas.api.search_ranking import rank_search_row, sort_ranked_results
 from cladecanvas.schema import metadata, metadata_table, nodes
 
@@ -207,7 +208,7 @@ class TestSearchRoute:
     def test_sqlite_search_uses_like_candidates_without_similarity(self):
         session = self._sqlite_session()
         try:
-            results = search_nodes("cat", session)
+            results = _search_nodes("cat", 25, 0, session)
         finally:
             session.close()
 
@@ -217,7 +218,7 @@ class TestSearchRoute:
     def test_query_is_stripped_before_searching(self):
         session = self._sqlite_session()
         try:
-            results = search_nodes("  cat  ", session)
+            results = _search_nodes(_normalize_query_or_422("  cat  "), 25, 0, session)
         finally:
             session.close()
 
@@ -227,7 +228,7 @@ class TestSearchRoute:
         session = self._sqlite_session()
         try:
             with pytest.raises(HTTPException) as exc_info:
-                search_nodes("  ", session)
+                _normalize_query_or_422("  ")
         finally:
             session.close()
 
