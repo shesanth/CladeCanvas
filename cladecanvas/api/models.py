@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Literal
 
 
 class FieldSource(BaseModel):
@@ -65,3 +65,20 @@ class LineageResponse(BaseModel):
 
 class SubtreeResponse(BaseModel):
     nodes: List[TreeNode]
+
+class ContextGraphNode(TreeNode):
+    kind: Literal["lineage", "sibling", "child"]
+    depth: int
+    is_focus: bool = False
+
+class ContextGraphEdge(BaseModel):
+    source: str
+    target: str
+    kind: Literal["lineage", "sibling", "child"]
+
+class ContextGraphResponse(BaseModel):
+    focus_node_id: str
+    lineage: List[TreeNode]
+    nodes: List[ContextGraphNode]
+    edges: List[ContextGraphEdge]
+    omitted_by_parent: dict[str, int]

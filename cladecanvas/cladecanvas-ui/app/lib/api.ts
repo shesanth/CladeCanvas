@@ -58,6 +58,28 @@ export type SearchResult = {
   score_breakdown?: Record<string, unknown> | null;
 };
 
+export type NavigationMode = "local" | "overview";
+
+export type ContextGraphNode = TreeNode & {
+  kind: "lineage" | "sibling" | "child";
+  depth: number;
+  is_focus: boolean;
+};
+
+export type ContextGraphEdge = {
+  source: string;
+  target: string;
+  kind: "lineage" | "sibling" | "child";
+};
+
+export type ContextGraph = {
+  focus_node_id: string;
+  lineage: TreeNode[];
+  nodes: ContextGraphNode[];
+  edges: ContextGraphEdge[];
+  omitted_by_parent: Record<string, number>;
+};
+
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "";
 const CHILDREN_PAGE_LIMIT = 200;
 
@@ -66,6 +88,7 @@ const nodeCache = new Map<string, TreeNode>();
 const metadataCache = new Map<string, Metadata | null>();
 const childrenCache = new Map<string, TreeNode[]>();
 const lineageCache = new Map<string, TreeNode[]>();
+const contextGraphCache = new Map<string, ContextGraph>();
 
 async function fetchJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const started = typeof performance !== "undefined" ? performance.now() : 0;
@@ -174,6 +197,16 @@ export async function fetchLineage(nodeId: string): Promise<TreeNode[]> {
   recordDuration("cache_lookup", "lineage", 0, { hit: "false" });
   for (const node of lineage) nodeCache.set(node.node_id, node);
   return lineage;
+}
+
+export async function fetchContextGraph(nodeId: string): Promise<ContextGraph> {
+  const cached = contextGraphCache.get(nodeId);
+  if (cached) return cached;
+  const graph = await fetchJSON<ContextGraph>(`/tree/context/${nodeId}`);
+  contextGraphCache.set(nodeId, graph);
+  for (const node of graph.nodes) nodeCache.set(node.node_id, node);
+  lineageCache.set(nodeId, graph.lineage);
+  return graph;
 }
 
 export async function searchNodes(query: string): Promise<SearchResult[]> {
