@@ -37,6 +37,7 @@ export type SearchResult = {
 };
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "";
+const CHILDREN_PAGE_LIMIT = 200;
 
 // Session-level cache — cleared on page reload, which is fine
 const nodeCache = new Map<string, TreeNode>();
@@ -54,6 +55,21 @@ async function fetchJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
+}
+
+async function fetchJSONWithHeaders<T>(
+  path: string,
+  signal?: AbortSignal
+): Promise<{ data: T; headers: Headers }> {
+  const started = typeof performance !== "undefined" ? performance.now() : 0;
+  const res = await fetch(`${API}${path}`, { signal });
+  if (started) {
+    recordDuration("api_request", path, performance.now() - started, {
+      status: String(res.status),
+    });
+  }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return { data: await res.json(), headers: res.headers };
 }
 
 export async function fetchNode(nodeId: string): Promise<TreeNode> {
@@ -99,7 +115,24 @@ export async function fetchChildren(nodeId: string): Promise<TreeNode[]> {
     recordDuration("cache_lookup", "children", 0, { hit: "true" });
     return cached;
   }
-  const children = await fetchJSON<TreeNode[]>(`/tree/children/${nodeId}`);
+  const children: TreeNode[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, headers } = await fetchJSONWithHeaders<TreeNode[]>(
+      `/tree/children/${nodeId}?limit=${CHILDREN_PAGE_LIMIT}&offset=${offset}`
+    );
+    children.push(...data);
+
+    const limitHeader = Number(headers.get("X-Limit"));
+    const pageLimit = Number.isFinite(limitHeader) && limitHeader > 0 ? limitHeader : data.length;
+    hasMore = headers.get("X-Has-More") === "true";
+    offset += pageLimit || data.length;
+
+    if (data.length === 0) break;
+  }
+
   childrenCache.set(nodeId, children);
   recordDuration("cache_lookup", "children", 0, { hit: "false" });
   // Populate node cache too

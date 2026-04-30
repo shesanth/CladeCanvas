@@ -13,7 +13,17 @@ jobs:
       - run: python -m venv .venv
       - run: . .venv/bin/activate && pip install -r requirements.txt
       - run: . .venv/bin/activate && pip install -e .
+      - name: Python dependency vulnerability scan
+        run: . .venv/bin/activate && pip install pip-audit && pip-audit -r requirements.txt
       - name: Run only unit tests (skip @api-marked tests)
         run: . .venv/bin/activate && pytest -m "not api" -q
       - name: Run dev SQLite API smoke tests
         run: . .venv/bin/activate && CLADECANVAS_DEV_SQLITE=1 pytest -m api tests/test_dev_sqlite_api.py -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: cladecanvas/cladecanvas-ui/package-lock.json
+      - name: Frontend dependency vulnerability scan
+        working-directory: cladecanvas/cladecanvas-ui
+        run: npm audit --audit-level=high

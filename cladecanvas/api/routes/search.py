@@ -1,13 +1,20 @@
 import re
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select, or_, case
 from sqlalchemy.orm import Session
 from cladecanvas.schema import metadata_table
 from cladecanvas.api.models import SearchResult
 from cladecanvas.api.deps import get_db
+from cladecanvas.api.hardening import (
+    MAX_SEARCH_LIMIT,
+    apply_statement_timeout,
+    hot_read_cache,
+    rate_limit_anonymous_reads,
+    set_public_cache_headers,
+)
 from typing import List
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(rate_limit_anonymous_reads)])
 
 SNIPPET_RADIUS = 80
 
@@ -30,7 +37,26 @@ def _extract_snippet(text: str, query: str) -> str:
 
 
 @router.get("", response_model=List[SearchResult])
-def search_nodes(q: str = Query(..., min_length=2), db: Session = Depends(get_db)):
+def search_nodes(
+    response: Response,
+    q: str = Query(..., min_length=2, max_length=80),
+    limit: int = Query(25, ge=1, le=MAX_SEARCH_LIMIT),
+    offset: int = Query(0, ge=0, le=10000),
+    db: Session = Depends(get_db),
+):
+    set_public_cache_headers(response)
+    normalized_q = q.strip()
+    if len(normalized_q) < 2:
+        return []
+
+    def load_search_results():
+        return _search_nodes(normalized_q, limit, offset, db)
+
+    return hot_read_cache.get_or_set(("search", normalized_q.casefold(), limit, offset), load_search_results)
+
+
+def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchResult]:
+    apply_statement_timeout(db)
     c = metadata_table.c
     pattern = f"%{q}%"
 
@@ -49,7 +75,8 @@ def search_nodes(q: str = Query(..., min_length=2), db: Session = Depends(get_db
             c.full_description.ilike(pattern),
         ))
         .order_by(rank_expr, c.node_id)
-        .limit(25)
+        .limit(limit)
+        .offset(offset)
     )
     rows = db.execute(stmt).fetchall()
 

@@ -21,6 +21,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count", "X-Limit", "X-Offset", "X-Has-More"],
 )
 app.add_middleware(RequestObservabilityMiddleware)
 
