@@ -13,13 +13,28 @@ export type TreeNode = {
 export type Metadata = {
   node_id: string;
   ott_id?: number | null;
+  wikidata_q?: string | null;
   common_name?: string | null;
   description?: string | null;
   full_description?: string | null;
   image_url?: string | null;
+  image_thumb?: string | null;
   wiki_page_url?: string | null;
   rank?: string | null;
+  last_updated?: string | null;
   enriched_score?: number | null;
+  source_label?: string | null;
+  source_url?: string | null;
+  source_match_method?: string | null;
+  enriched_at?: string | null;
+  provenance_confidence?: number | null;
+  field_sources?: Record<string, FieldSource>;
+};
+
+export type FieldSource = {
+  source_label?: string | null;
+  source_url?: string | null;
+  fallback?: boolean | null;
 };
 
 export type SearchResult = {
@@ -30,6 +45,9 @@ export type SearchResult = {
   image_url?: string | null;
   wiki_page_url?: string | null;
   enriched_score?: number | null;
+  source_label?: string | null;
+  enriched_at?: string | null;
+  provenance_confidence?: number | null;
   match_field?: string | null;
   match_snippet?: string | null;
 };

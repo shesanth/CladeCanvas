@@ -75,6 +75,9 @@ def search_nodes(q: str = Query(..., min_length=2), db: Session = Depends(get_db
             image_url=m["image_url"],
             wiki_page_url=m["wiki_page_url"],
             enriched_score=m["enriched_score"],
+            source_label=m["source_label"],
+            enriched_at=m["enriched_at"],
+            provenance_confidence=m["provenance_confidence"],
             match_field=match_field,
             match_snippet=snippet,
         ))

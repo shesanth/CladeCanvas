@@ -196,7 +196,14 @@ All node identifiers are strings: `ott{N}` for taxon nodes, `mrcaott{A}ott{B}` f
 | `full_description` | TEXT | Wikipedia introduction (HTML) |
 | `image_url` | TEXT | Wikimedia Commons image URL |
 | `wiki_page_url` | TEXT | Wikipedia article URL |
+| `last_updated` | TIMESTAMP | Legacy enrichment timestamp |
 | `enriched_score` | FLOAT | 1.0 if description or image exists, else 0.0 |
+| `source_label` | TEXT | Primary enrichment source label |
+| `source_url` | TEXT | Primary source URL (usually Wikidata entity) |
+| `source_match_method` | TEXT | Match strategy, e.g. `ott_id` or `taxon_name` |
+| `enriched_at` | TIMESTAMP | Timestamp used for freshness display |
+| `provenance_confidence` | FLOAT | Confidence score for the provenance/match |
+| `field_sources` | JSON | Per-field source/fallback indicators |
 
 ## Exploration
 
