@@ -92,6 +92,12 @@ alembic upgrade head                                        # apply migrations
 alembic check                                               # verify no drift
 ```
 
+Verify the indexes required by the hot API read paths before promoting a database:
+
+```bash
+python scripts/verify_db_indexes.py
+```
+
 ### 5. Enrich with Wikidata and Wikipedia
 
 Single-threaded (good for small batches):
@@ -145,14 +151,33 @@ Then visit http://localhost:3000.
 
 All node identifiers are strings: `ott{N}` for taxon nodes, `mrcaott{A}ott{B}` for synthetic nodes.
 
+Anonymous read endpoints are rate-limited per client. Hot read responses include public cache headers and a short in-process cache. Deployment knobs:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLADECANVAS_ANON_READS_PER_MINUTE` | `120` | Anonymous GET requests allowed per client per minute |
+| `CLADECANVAS_QUERY_TIMEOUT_MS` | `3000` | Postgres statement timeout applied to API reads |
+| `CLADECANVAS_PUBLIC_CACHE_SECONDS` | `60` | Browser/proxy cache max-age for read responses |
+| `CLADECANVAS_HOT_READ_CACHE_SECONDS` | `30` | In-process cache TTL for hot read payloads |
+| `CLADECANVAS_MAX_BULK_NODE_IDS` | `100` | Maximum IDs accepted by `/node/bulk` |
+| `CLADECANVAS_MAX_CHILDREN_LIMIT` | `200` | Maximum page size for `/tree/children/{node_id}` |
+| `CLADECANVAS_MAX_SEARCH_LIMIT` | `50` | Maximum page size for `/search` |
+| `CLADECANVAS_MAX_LINEAGE_DEPTH` | `128` | Maximum lineage traversal depth |
+| `CLADECANVAS_MAX_SUBTREE_DEPTH` | `4` | Maximum subtree traversal depth |
+| `CLADECANVAS_MAX_SUBTREE_NODES` | `500` | Maximum nodes returned by `/tree/subtree/{node_id}` |
+
 ### Tree
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /tree/root` | Root node of the tree |
-| `GET /tree/children/{node_id}` | Immediate children of a node |
-| `GET /tree/subtree/{node_id}?depth=N` | Subtree rooted at a node to depth N |
-| `GET /tree/lineage/{node_id}` | Ancestor chain from root to node |
+| `GET /tree/children/{node_id}?limit=100&offset=0` | Immediate children of a node |
+| `GET /tree/subtree/{node_id}?depth=N&max_nodes=500` | Subtree rooted at a node to depth N |
+| `GET /tree/lineage/{node_id}?max_depth=128` | Ancestor chain from root to node |
+
+`/tree/children/{node_id}` keeps its list response shape for compatibility. The response includes `X-Total-Count`,
+`X-Limit`, `X-Offset`, and `X-Has-More` headers so clients can tell when a page is truncated and request additional
+pages explicitly.
 
 ### Node
 
@@ -160,13 +185,13 @@ All node identifiers are strings: `ott{N}` for taxon nodes, `mrcaott{A}ott{B}` f
 |----------|-------------|
 | `GET /node/{node_id}` | Node structure (name, parent, child_count, num_tips, display_name) |
 | `GET /node/metadata/{node_id}` | Enriched metadata (common name, description, image, Wikipedia link) |
-| `GET /node/bulk?node_ids=...` | Batch metadata for multiple nodes |
+| `GET /node/bulk?node_ids=...` | Batch metadata for multiple nodes, capped by `CLADECANVAS_MAX_BULK_NODE_IDS` |
 
 ### Search
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /search?q=...` | Search metadata by common name or description |
+| `GET /search?q=...&limit=25&offset=0` | Search metadata by common name or description |
 
 ## Database Schema
 

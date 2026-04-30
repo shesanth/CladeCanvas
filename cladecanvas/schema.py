@@ -36,8 +36,10 @@ metadata_table = Table(
 # Partial unique indexes — expressed here so Alembic autogenerate can see them
 Index("ix_nodes_ott_id", nodes.c.ott_id,
       unique=True, postgresql_where=nodes.c.ott_id.isnot(None))
+Index("ix_nodes_parent_node_id", nodes.c.parent_node_id)
 Index("ix_metadata_ott_id", metadata_table.c.ott_id,
       unique=True, postgresql_where=metadata_table.c.ott_id.isnot(None))
+Index("ix_metadata_common_name", metadata_table.c.common_name)
 
 
 def initialize_postgres_db():
