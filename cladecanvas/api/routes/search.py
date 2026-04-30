@@ -37,13 +37,14 @@ def _search_dialect(db: Session) -> str:
 
 @router.get("", response_model=List[SearchResult])
 def search_nodes(
-    response: Response,
     q: str = Query(..., min_length=2, max_length=80),
+    db: Session = Depends(get_db),
+    response: Response | None = None,
     limit: int = Query(25, ge=1, le=MAX_SEARCH_LIMIT),
     offset: int = Query(0, ge=0, le=10000),
-    db: Session = Depends(get_db),
 ):
-    set_public_cache_headers(response)
+    if response is not None:
+        set_public_cache_headers(response)
     normalized_query = normalize_search_text(q)
     if len(normalized_query) < 2:
         raise HTTPException(
