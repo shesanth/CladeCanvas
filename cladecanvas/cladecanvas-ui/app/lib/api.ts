@@ -28,12 +28,16 @@ export type SearchResult = {
   node_id: string;
   ott_id?: number | null;
   common_name?: string | null;
+  display_name?: string | null;
   description?: string | null;
   image_url?: string | null;
   wiki_page_url?: string | null;
   enriched_score?: number | null;
   match_field?: string | null;
   match_snippet?: string | null;
+  match_type?: string | null;
+  score?: number | null;
+  score_breakdown?: Record<string, unknown> | null;
 };
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "";
