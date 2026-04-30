@@ -34,6 +34,28 @@ export type SearchResult = {
   match_snippet?: string | null;
 };
 
+export type NavigationMode = "local" | "overview";
+
+export type ContextGraphNode = TreeNode & {
+  kind: "lineage" | "sibling" | "child";
+  depth: number;
+  is_focus: boolean;
+};
+
+export type ContextGraphEdge = {
+  source: string;
+  target: string;
+  kind: "lineage" | "sibling" | "child";
+};
+
+export type ContextGraph = {
+  focus_node_id: string;
+  lineage: TreeNode[];
+  nodes: ContextGraphNode[];
+  edges: ContextGraphEdge[];
+  omitted_by_parent: Record<string, number>;
+};
+
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 // Session-level cache — cleared on page reload, which is fine
@@ -41,6 +63,7 @@ const nodeCache = new Map<string, TreeNode>();
 const metadataCache = new Map<string, Metadata | null>();
 const childrenCache = new Map<string, TreeNode[]>();
 const lineageCache = new Map<string, TreeNode[]>();
+const contextGraphCache = new Map<string, ContextGraph>();
 
 async function fetchJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${API}${path}`, { signal });
@@ -92,6 +115,16 @@ export async function fetchLineage(nodeId: string): Promise<TreeNode[]> {
   lineageCache.set(nodeId, lineage);
   for (const node of lineage) nodeCache.set(node.node_id, node);
   return lineage;
+}
+
+export async function fetchContextGraph(nodeId: string): Promise<ContextGraph> {
+  const cached = contextGraphCache.get(nodeId);
+  if (cached) return cached;
+  const graph = await fetchJSON<ContextGraph>(`/tree/context/${nodeId}`);
+  contextGraphCache.set(nodeId, graph);
+  for (const node of graph.nodes) nodeCache.set(node.node_id, node);
+  lineageCache.set(nodeId, graph.lineage);
+  return graph;
 }
 
 export async function searchNodes(query: string): Promise<SearchResult[]> {

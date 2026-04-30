@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   fetchNode,
   fetchMetadata,
   fetchChildren,
   fetchLineage,
+  fetchContextGraph,
+  type ContextGraph,
+  type NavigationMode,
   type TreeNode,
   type Metadata,
 } from "./lib/api";
@@ -15,14 +19,33 @@ import Breadcrumb from "./components/Breadcrumb";
 import LocalCladogram from "./components/LocalCladogram";
 import ReaderPanel from "./components/ReaderPanel";
 import ChildrenCards from "./components/ChildrenCards";
+import ContextOverviewRail from "./components/ContextOverviewRail";
+import JumpControls from "./components/JumpControls";
 
 const DEFAULT_ROOT = "ott691846"; // Metazoa
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <ExplorerPage />
+    </Suspense>
+  );
+}
+
+function ExplorerPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const nodeFromUrl = searchParams.get("node") || DEFAULT_ROOT;
+  const navFromUrl: NavigationMode =
+    searchParams.get("nav") === "overview" ? "overview" : "local";
+
   const [selectedNodeId, setSelectedNodeId] = useState(DEFAULT_ROOT);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [metadata, setMetadata] = useState<Metadata | null>(null);
   const [lineage, setLineage] = useState<TreeNode[]>([]);
+  const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>("local");
   const [parent, setParent] = useState<TreeNode | null>(null);
   const [siblings, setSiblings] = useState<TreeNode[]>([]);
   const [children, setChildren] = useState<TreeNode[]>([]);
@@ -38,6 +61,7 @@ export default function Page() {
 
     setIsLoading(true);
     setSelectedNodeId(nodeId);
+    setContextGraph(null);
 
     try {
       // Phase 1: parallel fetches for the selected node
@@ -59,6 +83,13 @@ export default function Page() {
       setMetadata(meta);
       setLineage(lin);
       setChildren(topByScore(kids, 100));
+      fetchContextGraph(nodeId)
+        .then((graph) => {
+          if (!controller.signal.aborted) setContextGraph(graph);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setContextGraph(null);
+        });
 
       // Phase 2: get parent and siblings from lineage
       const parentNode =
@@ -89,22 +120,69 @@ export default function Page() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
-    loadNode(DEFAULT_ROOT);
-  }, [loadNode]);
+    setNavigationMode(navFromUrl);
+    if (nodeFromUrl !== selectedNodeId || !selectedNode) {
+      loadNode(nodeFromUrl);
+    }
+  }, [nodeFromUrl, navFromUrl, selectedNodeId, selectedNode, loadNode]);
+
+  const updateUrl = useCallback(
+    (nodeId: string, mode: NavigationMode = navigationMode) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("node", nodeId);
+      params.set("nav", mode);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [navigationMode, pathname, router, searchParams]
+  );
 
   const onSelectNode = useCallback(
     (nodeId: string) => {
       if (nodeId === selectedNodeId) return;
-      loadNode(nodeId);
+      updateUrl(nodeId);
     },
-    [selectedNodeId, loadNode]
+    [selectedNodeId, updateUrl]
   );
+
+  const onModeChange = useCallback(
+    (mode: NavigationMode) => {
+      setNavigationMode(mode);
+      updateUrl(selectedNodeId, mode);
+    },
+    [selectedNodeId, updateUrl]
+  );
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName;
+      if (tagName === "INPUT" || tagName === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+
+      if (event.key === "o") {
+        event.preventDefault();
+        onModeChange(navigationMode === "overview" ? "local" : "overview");
+      } else if ((event.key === "ArrowUp" || event.key === "ArrowLeft") && parent) {
+        event.preventDefault();
+        onSelectNode(parent.node_id);
+      } else if (event.key === "ArrowRight" && children[0]) {
+        event.preventDefault();
+        onSelectNode(children[0].node_id);
+      } else if (event.key === "ArrowDown" && siblings[0]) {
+        event.preventDefault();
+        onSelectNode(siblings[0].node_id);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [children, navigationMode, onModeChange, onSelectNode, parent, siblings]);
 
   return (
     <main
-      className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-8 min-h-screen"
+      className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 min-h-screen"
       style={{ color: "var(--color-ink)" }}
     >
       {/* Header */}
@@ -121,32 +199,53 @@ export default function Page() {
       {/* Breadcrumb */}
       <Breadcrumb lineage={lineage} onSelect={onSelectNode} />
 
-      {/* Cladogram */}
-      {selectedNode && (
-        <LocalCladogram
-          parent={parent}
-          siblings={siblings}
-          selected={selectedNode}
-          childNodes={children}
-          onSelect={onSelectNode}
-        />
-      )}
+      <JumpControls
+        mode={navigationMode}
+        parent={parent}
+        childNodes={children}
+        siblings={siblings}
+        onSelect={onSelectNode}
+        onModeChange={onModeChange}
+      />
 
-      {/* Loading skeleton */}
-      {isLoading && !selectedNode && (
-        <div className="space-y-4 my-8">
-          <div className="skeleton h-[300px] w-full rounded-xl" />
-          <div className="skeleton h-8 w-48 mt-6" />
-          <div className="skeleton h-4 w-full mt-2" />
-          <div className="skeleton h-4 w-3/4 mt-1" />
-          <div className="skeleton h-4 w-1/2 mt-1" />
+      <div className="flex items-start gap-4">
+        {navigationMode === "overview" && (
+          <ContextOverviewRail
+            graph={contextGraph}
+            selectedNodeId={selectedNodeId}
+            onSelect={onSelectNode}
+          />
+        )}
+
+        <div className="min-w-0 flex-1">
+          {/* Cladogram */}
+          {selectedNode && (
+            <LocalCladogram
+              parent={parent}
+              siblings={siblings}
+              selected={selectedNode}
+              childNodes={children}
+              onSelect={onSelectNode}
+            />
+          )}
+
+          {/* Loading skeleton */}
+          {isLoading && !selectedNode && (
+            <div className="space-y-4 my-8">
+              <div className="skeleton h-[300px] w-full rounded-xl" />
+              <div className="skeleton h-8 w-48 mt-6" />
+              <div className="skeleton h-4 w-full mt-2" />
+              <div className="skeleton h-4 w-3/4 mt-1" />
+              <div className="skeleton h-4 w-1/2 mt-1" />
+            </div>
+          )}
+
+          {/* Reader Panel */}
+          <ReaderPanel metadata={metadata} node={selectedNode}>
+            <ChildrenCards nodes={children} onSelect={onSelectNode} />
+          </ReaderPanel>
         </div>
-      )}
-
-      {/* Reader Panel */}
-      <ReaderPanel metadata={metadata} node={selectedNode}>
-        <ChildrenCards nodes={children} onSelect={onSelectNode} />
-      </ReaderPanel>
+      </div>
     </main>
   );
 }

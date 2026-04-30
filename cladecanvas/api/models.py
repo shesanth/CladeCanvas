@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 class NodeMetadata(BaseModel):
     node_id: str
@@ -42,3 +42,20 @@ class LineageResponse(BaseModel):
 
 class SubtreeResponse(BaseModel):
     nodes: List[TreeNode]
+
+class ContextGraphNode(TreeNode):
+    kind: Literal["lineage", "sibling", "child"]
+    depth: int
+    is_focus: bool = False
+
+class ContextGraphEdge(BaseModel):
+    source: str
+    target: str
+    kind: Literal["lineage", "sibling", "child"]
+
+class ContextGraphResponse(BaseModel):
+    focus_node_id: str
+    lineage: List[TreeNode]
+    nodes: List[ContextGraphNode]
+    edges: List[ContextGraphEdge]
+    omitted_by_parent: dict[str, int]

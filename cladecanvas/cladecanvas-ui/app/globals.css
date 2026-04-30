@@ -37,6 +37,72 @@
   border-radius: 4px;
 }
 
+.nav-control {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-paper-light);
+  color: var(--color-ink);
+  font-size: 17px;
+  line-height: 1;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.nav-control:hover:not(:disabled) {
+  background: var(--color-paper);
+  transform: translateY(-1px);
+}
+
+.nav-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.overview-rail {
+  position: sticky;
+  top: 16px;
+  flex: 0 0 92px;
+  height: 420px;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.overview-rail__spine {
+  position: absolute;
+  top: 8%;
+  bottom: 12%;
+  left: calc(40% + 5px);
+  width: 2px;
+  background: var(--color-border);
+}
+
+.overview-rail__node {
+  position: absolute;
+  border-radius: 999px;
+  border: 2px solid var(--color-paper-light);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(44, 36, 22, 0.16);
+}
+
+.overview-rail__node:hover {
+  outline: 2px solid var(--color-accent);
+}
+
+.overview-rail__node--side {
+  opacity: 0.82;
+}
+
+.overview-rail__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  color: var(--color-ink-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
 /* Scrollbar styling for children cards */
 .scrollbar-thin::-webkit-scrollbar {
   height: 6px;
