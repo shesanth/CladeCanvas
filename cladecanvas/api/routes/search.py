@@ -112,6 +112,9 @@ def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchRe
             c.image_url,
             c.wiki_page_url,
             c.enriched_score,
+            c.source_label,
+            c.enriched_at,
+            c.provenance_confidence,
         )
         .select_from(metadata_table.join(nodes, c.node_id == n.node_id))
         .where(or_(*filters))
@@ -124,9 +127,17 @@ def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchRe
     for row in rows:
         result = rank_search_row(row, q)
         if result:
-            ranked.append(result)
+            ranked.append((result, row))
 
-    return [
-        SearchResult(**result.__dict__)
-        for result in sort_ranked_results(ranked)[offset:offset + limit]
-    ]
+    results = []
+    row_by_id = {result.node_id: row for result, row in ranked}
+    for result in sort_ranked_results([result for result, _ in ranked])[offset:offset + limit]:
+        row = row_by_id[result.node_id]
+        payload = {
+            **result.__dict__,
+            "source_label": row.get("source_label"),
+            "enriched_at": row.get("enriched_at"),
+            "provenance_confidence": row.get("provenance_confidence"),
+        }
+        results.append(SearchResult(**payload))
+    return results

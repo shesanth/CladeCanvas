@@ -86,9 +86,22 @@ class TestNodeMetadata:
             wiki_page_url="https://en.wikipedia.org/wiki/Bilateria",
             rank="clade",
             enriched_score=1.0,
+            source_label="Wikidata",
+            source_url="https://www.wikidata.org/wiki/Q5173",
+            source_match_method="ott_id",
+            provenance_confidence=1.0,
+            field_sources={
+                "common_name": {
+                    "source_label": "Wikidata",
+                    "source_url": "https://www.wikidata.org/wiki/Q5173",
+                    "fallback": False,
+                }
+            },
         )
         assert meta.enriched_score == 1.0
         assert meta.rank == "clade"
+        assert meta.source_label == "Wikidata"
+        assert meta.field_sources["common_name"].fallback is False
 
     def test_mrca_node_no_ott_id(self):
         """MRCA nodes have null ott_id in metadata."""

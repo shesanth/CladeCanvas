@@ -1,6 +1,6 @@
 from sqlalchemy import (
     MetaData, Table, Column, Index, Integer, Text, ForeignKey, DateTime, Float,
-    text,
+    JSON, text,
 )
 from cladecanvas.db import engine
 
@@ -32,6 +32,12 @@ metadata_table = Table(
     Column("image_thumb", Text),
     Column("last_updated", DateTime),
     Column("enriched_score", Float),
+    Column("source_label", Text, nullable=False, server_default="Wikidata/Wikipedia"),
+    Column("source_url", Text, nullable=True),
+    Column("source_match_method", Text, nullable=True),
+    Column("enriched_at", DateTime, nullable=True),
+    Column("provenance_confidence", Float, nullable=False, server_default="0"),
+    Column("field_sources", JSON, nullable=False, server_default=text("'{}'")),
 )
 
 # Partial unique indexes — expressed here so Alembic autogenerate can see them

@@ -1,6 +1,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from cladecanvas.enrich import clean_taxon_name, fetch_wikipedia_extract, fetch_wikidata
+from cladecanvas.enrich import (
+    build_field_sources,
+    clean_taxon_name,
+    fetch_wikipedia_extract,
+    fetch_wikidata,
+)
 
 
 # ── clean_taxon_name ─────────────────────────────────────────────────────────
@@ -114,6 +119,29 @@ class TestFetchWikipediaExtract:
         assert url == "https://en.wikipedia.org/wiki/SomeTaxon"
 
 
+class TestBuildFieldSources:
+    def test_includes_wikidata_and_wikipedia_sources(self):
+        sources = build_field_sources(
+            "Wikidata",
+            "https://www.wikidata.org/wiki/Q5173",
+            "https://en.wikipedia.org/wiki/Bilateria",
+        )
+
+        assert sources["common_name"]["source_label"] == "Wikidata"
+        assert sources["full_description"]["source_label"] == "Wikipedia"
+        assert sources["common_name"]["fallback"] is False
+
+    def test_marks_fallback_sources(self):
+        sources = build_field_sources(
+            "Wikidata fallback",
+            "https://www.wikidata.org/wiki/Q888",
+            fallback=True,
+        )
+
+        assert sources["description"]["fallback"] is True
+        assert "full_description" not in sources
+
+
 # ── fetch_wikidata ───────────────────────────────────────────────────────────
 
 class TestFetchWikidata:
@@ -155,6 +183,8 @@ class TestFetchWikidata:
         assert results[0]["wikidata_q"] == "Q5173"
         assert results[0]["common_name"] == "Bilateria"
         assert results[0]["enriched_score"] == 1.0
+        assert results[0]["source_match_method"] == "ott_id"
+        assert results[0]["field_sources"]["common_name"]["source_label"] == "Wikidata"
 
     @patch("cladecanvas.enrich.fetch_wikipedia_extract")
     @patch("cladecanvas.enrich.requests.get")
@@ -202,6 +232,8 @@ class TestFetchWikidata:
         results = fetch_wikidata([{"ott_id": 888, "name": "Rara", "node_id": "ott888"}])
         assert len(results) == 1
         assert results[0]["wikidata_q"] == "Q888"
+        assert results[0]["source_match_method"] == "taxon_name"
+        assert results[0]["field_sources"]["common_name"]["fallback"] is True
 
     @patch("cladecanvas.enrich.fetch_wikipedia_extract")
     @patch("cladecanvas.enrich.requests.get")

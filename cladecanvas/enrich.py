@@ -56,6 +56,29 @@ def fetch_wikipedia_extract(wikidata_q):
         return clean, wiki_page_url
     return None, wiki_page_url
 
+
+def build_field_sources(source_label, source_url, wiki_page_url=None, fallback=False):
+    wikidata_source = {
+        "source_label": source_label,
+        "source_url": source_url,
+        "fallback": fallback,
+    }
+    wikipedia_source = {
+        "source_label": "Wikipedia",
+        "source_url": wiki_page_url,
+        "fallback": fallback,
+    }
+    field_sources = {
+        "common_name": wikidata_source,
+        "description": wikidata_source,
+        "image_url": wikidata_source,
+        "rank": wikidata_source,
+    }
+    if wiki_page_url:
+        field_sources["full_description"] = wikipedia_source
+        field_sources["wiki_page_url"] = wikipedia_source
+    return field_sources
+
 def fetch_wikidata(ott_nodes):
     ott_id_map = {n['ott_id']: n['name'] for n in ott_nodes}
     ott_ids = list(ott_id_map.keys())
@@ -103,6 +126,9 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
         label = b['itemLabel']['value']
         rank = b.get('rankLabel', {}).get('value') if 'rankLabel' in b else None
         full_desc, wiki_page = fetch_wikipedia_extract(q)
+        enriched_at = datetime.now(timezone.utc)
+        source_url = f"https://www.wikidata.org/wiki/{q}"
+        confidence = 1.0 if full_desc or image else 0.0
 
         results.append({
             'ott_id': ott,
@@ -114,8 +140,14 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
             'image_thumb': image,
             'wiki_page_url': wiki_page,
             'rank': rank,
-            'last_updated': datetime.now(timezone.utc).isoformat(),
-            'enriched_score': 1.0 if full_desc or image else 0.0
+            'last_updated': enriched_at,
+            'enriched_score': confidence,
+            'source_label': "Wikidata",
+            'source_url': source_url,
+            'source_match_method': "ott_id",
+            'enriched_at': enriched_at,
+            'provenance_confidence': confidence,
+            'field_sources': build_field_sources("Wikidata", source_url, wiki_page),
         })
 
     fallback_hits = 0
@@ -156,6 +188,9 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
         label = b['itemLabel']['value']
         rank = b.get('rankLabel', {}).get('value') if 'rankLabel' in b else None
         full_desc, wiki_page = fetch_wikipedia_extract(q)
+        enriched_at = datetime.now(timezone.utc)
+        source_url = f"https://www.wikidata.org/wiki/{q}"
+        confidence = 0.7 if (full_desc or image) else 0.35
 
         results.append({
             'ott_id': ott,
@@ -167,8 +202,19 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
             'image_thumb': image,
             'wiki_page_url': wiki_page,
             'rank': rank,
-            'last_updated': datetime.now(timezone.utc).isoformat(),
-            'enriched_score': 1.0 if full_desc or image else 0.0
+            'last_updated': enriched_at,
+            'enriched_score': 1.0 if full_desc or image else 0.0,
+            'source_label': "Wikidata fallback",
+            'source_url': source_url,
+            'source_match_method': "taxon_name",
+            'enriched_at': enriched_at,
+            'provenance_confidence': confidence,
+            'field_sources': build_field_sources(
+                "Wikidata fallback",
+                source_url,
+                wiki_page,
+                fallback=True,
+            ),
         })
         fallback_hits += 1
 
