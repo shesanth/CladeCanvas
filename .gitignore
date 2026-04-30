@@ -208,7 +208,11 @@ cython_debug/
 
 # Data artefacts
 /data/*.csv
+/data/*.db
 /data/*.newick
+
+# Local pytest scratch space
+.tmp/
 
 # Jupyter
 .ipynb_checkpoints/

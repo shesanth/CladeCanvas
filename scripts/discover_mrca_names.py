@@ -14,7 +14,7 @@ Phase 3: Child-pair Wikidata search — for top unaliased MRCA nodes by num_tips
 import argparse
 import time
 import requests
-from cladecanvas.db import Session
+from cladecanvas.db import Session, assert_writes_allowed
 from sqlalchemy import text
 
 OTOL_API = "https://api.opentreeoflife.org/v3/tree_of_life/node_info"
@@ -58,6 +58,7 @@ def write_aliases(aliases, dry_run=False):
             print(f"  ... and {len(aliases) - 20} more")
         return
 
+    assert_writes_allowed("MRCA alias writes")
     with Session() as s:
         for mrca_id, display_name in aliases:
             s.execute(text(

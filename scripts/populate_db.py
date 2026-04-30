@@ -6,7 +6,7 @@ import logging
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import text
 
-from cladecanvas.db import Session
+from cladecanvas.db import Session, assert_writes_allowed
 from cladecanvas.schema import initialize_postgres_db, nodes, metadata_table
 from cladecanvas.enrich import fetch_wikidata
 
@@ -121,6 +121,8 @@ def enrich_and_store_metadata(session, ott_ids):
 
 
 def main():
+    assert_writes_allowed("database population/enrichment")
+
     parser = argparse.ArgumentParser(description="Populate DB with OpenTree + Wikidata metadata.")
     parser.add_argument("--limit", type=int, default=100, help="Batch size for enrichment")
     parser.add_argument("--skip-load", action="store_true", help="Skip loading nodes from CSV")

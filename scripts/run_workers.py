@@ -1,7 +1,7 @@
 import time
 import random
 from multiprocessing import Process
-from cladecanvas.db import Session
+from cladecanvas.db import Session, assert_writes_allowed
 from cladecanvas.enrich import fetch_wikidata
 from cladecanvas.schema import metadata_table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -74,6 +74,8 @@ def enrich_batch(worker_id, batch_size, sleep_time, loop_count):
         time.sleep(sleep_time + random.uniform(0, 0.5))
 
 def main():
+    assert_writes_allowed("background enrichment workers")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--limit", type=int, default=100)

@@ -3,7 +3,7 @@ the wrong Wikidata entry (duplicate P9157 values in Wikidata)."""
 
 import re
 import time
-from cladecanvas.db import Session
+from cladecanvas.db import Session, assert_writes_allowed
 from cladecanvas.enrich import fetch_wikidata
 from cladecanvas.schema import metadata_table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -92,6 +92,7 @@ def re_enrich_batch(session, nodes, batch_size=50):
 
 
 if __name__ == '__main__':
+    assert_writes_allowed("metadata repair")
     session = Session()
 
     wrong = find_wrong_entries(session)

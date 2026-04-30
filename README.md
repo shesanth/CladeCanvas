@@ -21,7 +21,7 @@ cladecanvas/
   fetch_otol.py        # Downloads the OToL synthesis tree via arguson API
   enrich.py            # Wikidata SPARQL + Wikipedia enrichment
   schema.py            # SQLAlchemy table definitions (nodes, metadata)
-  db.py                # Engine / session factory (reads POSTGRES_URL)
+  db.py                # Engine / session factory (Postgres or read-only dev SQLite)
   api/
     main.py            # FastAPI app with CORS
     routes/            # tree, node, search endpoints
@@ -38,8 +38,65 @@ The synthesis tree contains ~1.7M nodes under Metazoa, including ~65K synthetic 
 ## Prerequisites
 
 - Python 3.11+
-- PostgreSQL
+- PostgreSQL for full data loading/enrichment
 - Node.js 18+
+
+For API/frontend development without a local PostgreSQL database, set
+`CLADECANVAS_DEV_SQLITE=1`. The API will use the checked-in
+`data/dev_seed.sqlite` fixture in read-only mode.
+
+## Developer SQLite Mode
+
+CladeCanvas has three database profiles:
+
+| Profile | How it is selected | Write behavior |
+|---------|--------------------|----------------|
+| `prod` | `CLADECANVAS_DB_PROFILE=prod` with `POSTGRES_URL` | Full PostgreSQL read/write |
+| `dev-postgres` | Default when `POSTGRES_URL` is set | Full PostgreSQL read/write |
+| `dev-sqlite` | `CLADECANVAS_DEV_SQLITE=1` or `CLADECANVAS_DB_PROFILE=dev-sqlite` | Read-only seed DB |
+
+Use `dev-sqlite` when you only need local API/frontend reads:
+
+```bash
+CLADECANVAS_DEV_SQLITE=1 uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:CLADECANVAS_DEV_SQLITE = "1"
+uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+In this mode `POSTGRES_URL` is not required. The API opens
+`data/dev_seed.sqlite` through SQLite's read-only URI mode, so accidental
+database writes fail at the database layer. Startup logs include a clear
+database-mode banner such as `CladeCanvas database mode: dev-sqlite
+(read-only API seed; enrichment/write paths disabled)`.
+
+The checked-in seed is intentionally tiny. It exists to prove and exercise the
+read-only routes used by local development and CI:
+
+- `GET /tree/root`
+- `GET /node/{node_id}`
+- `GET /node/metadata/{node_id}`
+- `GET /search?q=...`
+
+Write-oriented paths are blocked explicitly in `dev-sqlite`: database
+population, enrichment workers, metadata repair, and MRCA alias write scripts
+raise a clear `RuntimeError` before doing work. Use PostgreSQL for those jobs.
+
+To point at a different local seed file:
+
+```bash
+CLADECANVAS_DEV_SQLITE=1 CLADECANVAS_SQLITE_PATH=/path/to/dev_seed.sqlite uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+Run the SQLite smoke tests with:
+
+```bash
+CLADECANVAS_DEV_SQLITE=1 pytest -m api tests/test_dev_sqlite_api.py -q
+```
 
 ## How to Build the Database
 
@@ -51,9 +108,8 @@ pip install -r requirements.txt
 
 ### 2. Configure the database connection
 
-The application raises a `RuntimeError` at startup if `POSTGRES_URL` is missing.
-
-Set the `POSTGRES_URL` environment variable:
+For full database loading and enrichment, set the `POSTGRES_URL` environment
+variable:
 
 ```bash
 export POSTGRES_URL=postgresql://user:pass@localhost:5432/cladecanvas
@@ -65,6 +121,25 @@ set POSTGRES_URL=postgresql://user:pass@localhost:5432/cladecanvas
 ```
 
 Or create a `.env` file in the project root (loaded automatically by `python-dotenv`).
+
+For read-only local API/frontend development, use the tiny SQLite seed instead:
+
+```bash
+export CLADECANVAS_DEV_SQLITE=1
+uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+On Windows PowerShell:
+```powershell
+$env:CLADECANVAS_DEV_SQLITE = "1"
+uvicorn cladecanvas.api.main:app --port 8600 --reload
+```
+
+This mode does not require `POSTGRES_URL`. It serves `/tree/root`,
+`/node/{node_id}`, `/node/metadata/{node_id}`, and `/search` from
+`data/dev_seed.sqlite`; enrichment, population, metadata repair, and MRCA alias
+write scripts fail immediately with a clear `RuntimeError`. Set
+`CLADECANVAS_SQLITE_PATH` to point at a different seed file if needed.
 
 ### 3. Download the synthesis tree
 
@@ -125,6 +200,9 @@ uvicorn cladecanvas.api.main:app --port 8600 --reload
 
 - Swagger docs: http://localhost:8600/docs
 - ReDoc: http://localhost:8600/redoc
+
+Use `CLADECANVAS_DEV_SQLITE=1` with the same command when you only need the
+read-only seed API.
 
 ### Frontend
 
