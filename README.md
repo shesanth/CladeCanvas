@@ -125,6 +125,9 @@ uvicorn cladecanvas.api.main:app --port 8600 --reload
 
 - Swagger docs: http://localhost:8600/docs
 - ReDoc: http://localhost:8600/redoc
+- Observability: every API response includes an `X-Request-ID` header. Requests
+  emit structured route timing logs, and `GET /metrics` exposes in-memory
+  endpoint, database, and cache latency rollups for local inspection.
 
 ### Frontend
 
@@ -140,6 +143,11 @@ NEXT_PUBLIC_API_BASE=http://localhost:8600
 ```
 
 Then visit http://localhost:3000.
+
+The frontend records API, cache, and node-navigation timing samples with the
+browser Performance API. Recent samples are available at
+`window.__CLADECANVAS_PERF__` during a session and are also logged as
+`cladecanvas_perf` console events.
 
 ## API Endpoints
 

@@ -15,6 +15,7 @@ import Breadcrumb from "./components/Breadcrumb";
 import LocalCladogram from "./components/LocalCladogram";
 import ReaderPanel from "./components/ReaderPanel";
 import ChildrenCards from "./components/ChildrenCards";
+import { markEnd, markStart } from "./lib/performance";
 
 const DEFAULT_ROOT = "ott691846"; // Metazoa
 
@@ -31,6 +32,7 @@ export default function Page() {
   const abortRef = useRef<AbortController | null>(null);
 
   const loadNode = useCallback(async (nodeId: string) => {
+    const transitionMark = markStart("node_navigation", nodeId);
     // Cancel in-flight metadata request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -85,6 +87,9 @@ export default function Page() {
       if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("loadNode error:", err);
     } finally {
+      markEnd(transitionMark, "node_navigation", nodeId, {
+        aborted: String(controller.signal.aborted),
+      });
       if (!controller.signal.aborted) setIsLoading(false);
     }
   }, []);
