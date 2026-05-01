@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import case, func, literal, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -14,7 +14,6 @@ from cladecanvas.api.hardening import (
 from cladecanvas.api.models import SearchResult
 from cladecanvas.api.search_ranking import (
     MAX_CANDIDATES,
-    POSTGRES_TRIGRAM_THRESHOLD,
     expand_query_terms,
     extract_snippet,
     normalize_search_text,
@@ -72,67 +71,102 @@ def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchRe
     c = metadata_table.c
     n = nodes.c
 
-    text_columns = (
+    metadata_prefix_filters = []
+    node_prefix_filters = []
+    metadata_fuzzy_filters = []
+    node_fuzzy_filters = []
+    for term in query_terms:
+        prefix_pattern = f"{term}%"
+        metadata_prefix_filters.append(c.common_name.ilike(prefix_pattern))
+        node_prefix_filters.extend([
+            n.display_name.ilike(prefix_pattern),
+            n.name.ilike(prefix_pattern),
+        ])
+        if use_postgres_similarity:
+            metadata_fuzzy_filters.append(c.common_name.op("%")(term))
+            node_fuzzy_filters.extend([
+                n.display_name.op("%")(term),
+                n.name.op("%")(term),
+            ])
+        else:
+            contains_pattern = f"%{term}%"
+            metadata_fuzzy_filters.append(c.common_name.ilike(contains_pattern))
+            node_fuzzy_filters.extend([
+                n.display_name.ilike(contains_pattern),
+                n.name.ilike(contains_pattern),
+            ])
+
+    base_select = select(
+        c.node_id,
+        c.ott_id,
         c.common_name,
         n.display_name,
         n.name,
         c.description,
         c.full_description,
-    )
+        c.image_url,
+        c.wiki_page_url,
+        c.enriched_score,
+        c.source_label,
+        c.enriched_at,
+        c.provenance_confidence,
+    ).select_from(metadata_table.join(nodes, c.node_id == n.node_id))
 
-    filters = []
-    prefix_filters = []
-    for term in query_terms:
-        contains_pattern = f"%{term}%"
-        prefix_pattern = f"{term}%"
-        term_prefix_filters = [
-            column.ilike(prefix_pattern)
-            for column in (c.common_name, n.display_name, n.name)
-        ]
-        filters.extend(column.ilike(contains_pattern) for column in text_columns)
-        prefix_filters.extend(term_prefix_filters)
-        filters.extend(term_prefix_filters)
-        if use_postgres_similarity:
-            filters.extend(
-                func.similarity(func.coalesce(column, literal("")), term) >= POSTGRES_TRIGRAM_THRESHOLD
-                for column in (c.common_name, n.display_name, n.name)
-            )
+    candidate_limit = max(MAX_CANDIDATES, offset + limit)
+    rows_by_id = {}
 
-    coarse_rank = case(
-        (func.lower(c.common_name).in_(query_terms), 1),
-        (or_(func.lower(n.display_name).in_(query_terms), func.lower(n.name).in_(query_terms)), 2),
-        (or_(*prefix_filters), 3),
-        else_=4,
-    )
+    def load_candidates(filter_groups):
+        for filters in filter_groups:
+            if not filters:
+                continue
+            rows = db.execute(
+                base_select
+                .where(or_(*filters))
+                .limit(candidate_limit)
+            ).mappings().fetchall()
+            rows_by_id.update({row["node_id"]: row for row in rows})
 
-    stmt = (
-        select(
-            c.node_id,
-            c.ott_id,
-            c.common_name,
-            n.display_name,
-            n.name,
-            c.description,
-            c.full_description,
-            c.image_url,
-            c.wiki_page_url,
-            c.enriched_score,
-            c.source_label,
-            c.enriched_at,
-            c.provenance_confidence,
-        )
-        .select_from(metadata_table.join(nodes, c.node_id == n.node_id))
-        .where(or_(*filters))
-        .order_by(coarse_rank, c.node_id)
-        .limit(max(MAX_CANDIDATES, offset + limit))
-    )
+    load_candidates((metadata_prefix_filters, node_prefix_filters))
 
-    rows = db.execute(stmt).mappings().fetchall()
     ranked = []
-    for row in rows:
+    for row in rows_by_id.values():
         result = rank_search_row(row, q)
         if result:
             ranked.append((result, row))
+
+    if not ranked:
+        load_candidates((metadata_fuzzy_filters, node_fuzzy_filters))
+        for row in rows_by_id.values():
+            result = rank_search_row(row, q)
+            if result:
+                ranked.append((result, row))
+
+    if not ranked:
+        existing_ids = set()
+        description_filters = []
+        for term in query_terms:
+            contains_pattern = f"%{term}%"
+            if len(term) >= 4:
+                description_filters.append(c.description.ilike(contains_pattern))
+            if len(term) >= 6:
+                description_filters.append(c.full_description.ilike(contains_pattern))
+
+        if description_filters:
+            description_stmt = (
+                base_select
+                .where(or_(*description_filters))
+                .limit(candidate_limit)
+            )
+            for row in db.execute(description_stmt).mappings().fetchall():
+                if row["node_id"] in existing_ids:
+                    continue
+                result = rank_search_row(row, q)
+                if result:
+                    ranked.append((result, row))
+                    existing_ids.add(result.node_id)
+
+    if not ranked:
+        return []
 
     results = []
     row_by_id = {result.node_id: row for result, row in ranked}

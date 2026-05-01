@@ -80,7 +80,7 @@ export type ContextGraph = {
   omitted_by_parent: Record<string, number>;
 };
 
-const API = process.env.NEXT_PUBLIC_API_BASE ?? "";
+const API = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8600").trim();
 const CHILDREN_PAGE_LIMIT = 200;
 
 // Session-level cache — cleared on page reload, which is fine

@@ -11,20 +11,32 @@ export default function SearchBar({ onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchCounterRef = useRef(0);
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) {
+    const normalized = q.trim();
+    if (normalized.length < 3) {
       setResults([]);
       setIsOpen(false);
+      setIsSearching(false);
       return;
     }
-    const data = await searchNodes(q);
-    setResults(data);
-    setIsOpen(data.length > 0);
-    setActiveIndex(-1);
+    searchCounterRef.current += 1;
+    const searchId = searchCounterRef.current;
+    setIsSearching(true);
+    try {
+      const data = await searchNodes(normalized);
+      if (searchId !== searchCounterRef.current) return;
+      setResults(data);
+      setIsOpen(data.length > 0);
+      setActiveIndex(-1);
+    } finally {
+      if (searchId === searchCounterRef.current) setIsSearching(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -113,6 +125,14 @@ export default function SearchBar({ onSelect }: Props) {
             border: "1px solid var(--color-border)",
           }}
         >
+          {isSearching && (
+            <div
+              className="px-4 py-2 text-xs"
+              style={{ color: "var(--color-ink-muted)" }}
+            >
+              Searching...
+            </div>
+          )}
           {results.map((result, idx) => (
             <div
               key={result.node_id}
