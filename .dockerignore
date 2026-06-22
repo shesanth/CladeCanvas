@@ -1,0 +1,17 @@
+.git
+.claude
+.pytest_cache
+.tmp
+.venv
+build
+cladecanvas.egg-info
+data
+logs
+notebooks
+tests
+cladecanvas/cladecanvas-ui/node_modules
+cladecanvas/cladecanvas-ui/.next
+cladecanvas/cladecanvas-ui/out
+*.log
+*.pyc
+__pycache__

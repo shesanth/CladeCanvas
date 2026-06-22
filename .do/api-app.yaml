@@ -1,0 +1,39 @@
+name: cladecanvas-api
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: YOUR_GITHUB_USER_OR_ORG/CladeCanvas
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    routes:
+      - path: /
+    envs:
+      - key: CLADECANVAS_DB_PROFILE
+        value: prod
+      - key: POSTGRES_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: ${cladecanvas-db.DATABASE_URL}
+      - key: CLADECANVAS_CORS_ORIGINS
+        scope: RUN_TIME
+        value: https://YOUR_DOMAIN
+      - key: CLADECANVAS_QUERY_TIMEOUT_MS
+        scope: RUN_TIME
+        value: "3000"
+      - key: CLADECANVAS_ANON_READS_PER_MINUTE
+        scope: RUN_TIME
+        value: "120"
+
+databases:
+  - name: cladecanvas-db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: cladecanvas-db

@@ -233,6 +233,68 @@ browser Performance API. Recent samples are available at
 `window.__CLADECANVAS_PERF__` during a session and are also logged as
 `cladecanvas_perf` console events.
 
+## Hosting
+
+CladeCanvas is split into two deployable services:
+
+- FastAPI backend from the repository root, served with
+  `uvicorn cladecanvas.api.main:app`.
+- Next.js frontend from `cladecanvas/cladecanvas-ui`, built with
+  `npm run build` and served with `npm run start`.
+
+For a hosted environment, configure the backend with PostgreSQL and set the
+frontend origin explicitly:
+
+```bash
+CLADECANVAS_DB_PROFILE=prod
+POSTGRES_URL=postgresql://user:password@host:5432/cladecanvas
+CLADECANVAS_CORS_ORIGINS=https://your-frontend.example
+```
+
+Configure the frontend with the public API URL:
+
+```bash
+NEXT_PUBLIC_API_BASE=https://your-api.example
+```
+
+The root `.env.example` and `cladecanvas/cladecanvas-ui/.env.example` files
+contain the minimal deployment variables. Keep `CLADECANVAS_DEV_SQLITE=1` for
+local read-only demos only; production should use PostgreSQL.
+
+### DigitalOcean App Platform
+
+The repository includes DigitalOcean App Platform templates:
+
+- `.do/api-app.yaml` deploys the FastAPI service and a managed PostgreSQL
+  database.
+- `.do/web-app.yaml` deploys the Next.js frontend as a static site.
+
+Use separate domains so the API does not need path-prefix rewriting:
+
+- `https://your-domain.example` -> static frontend
+- `https://api.your-domain.example` -> FastAPI backend
+
+Before importing the specs, replace `YOUR_GITHUB_USER_OR_ORG/CladeCanvas` and
+`YOUR_DOMAIN` in both `.do/*.yaml` files.
+
+The API deploy uses `Dockerfile` and `requirements-api.txt` to keep production
+dependencies lean. The frontend deploy uses `output: "export"` and publishes
+`cladecanvas/cladecanvas-ui/out`.
+
+To move the local PostgreSQL database into the managed database, dump locally
+and restore to DigitalOcean:
+
+```bash
+pg_dump "$POSTGRES_URL" --format=custom --file=cladecanvas.dump
+pg_restore --clean --if-exists --no-owner --dbname="$DIGITALOCEAN_POSTGRES_URL" cladecanvas.dump
+```
+
+After restoring, verify the hot read indexes:
+
+```bash
+POSTGRES_URL="$DIGITALOCEAN_POSTGRES_URL" python scripts/verify_db_indexes.py
+```
+
 ## API Endpoints
 
 All node identifiers are strings: `ott{N}` for taxon nodes, `mrcaott{A}ott{B}` for synthetic nodes.
@@ -241,6 +303,7 @@ Anonymous read endpoints are rate-limited per client. Hot read responses include
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `CLADECANVAS_CORS_ORIGINS` | local `localhost`/`127.0.0.1` frontend origins | Comma-separated frontend origins allowed to call the API |
 | `CLADECANVAS_ANON_READS_PER_MINUTE` | `120` | Anonymous GET requests allowed per client per minute |
 | `CLADECANVAS_QUERY_TIMEOUT_MS` | `3000` | Postgres statement timeout applied to API reads |
 | `CLADECANVAS_PUBLIC_CACHE_SECONDS` | `60` | Browser/proxy cache max-age for read responses |

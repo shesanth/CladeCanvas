@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TreeNode, Metadata, FieldSource } from "../lib/api";
@@ -102,6 +102,12 @@ function FieldSourceLabel({ source }: { source?: FieldSource | null }) {
 }
 
 export default function ReaderPanel({ metadata, node, children }: Props) {
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFailedImageUrl(null);
+  }, [metadata?.image_url]);
+
   if (!node) {
     return (
       <div
@@ -130,6 +136,10 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
   const staleness = stalenessFor(enrichedAt);
   const confidence =
     metadata?.provenance_confidence ?? metadata?.enriched_score ?? null;
+  const imageUrl =
+    metadata?.image_url && metadata.image_url !== failedImageUrl
+      ? metadata.image_url
+      : null;
 
   return (
     <AnimatePresence mode="wait">
@@ -232,14 +242,15 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
         </div>
 
         {/* Image */}
-        {metadata?.image_url && (
+        {imageUrl && (
           <figure className="float-right ml-6 mb-4 max-w-[280px] md:max-w-[360px]">
             <motion.img
-              src={metadata.image_url}
+              src={imageUrl}
               alt={title}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1, duration: 0.3 }}
+              onError={() => setFailedImageUrl(imageUrl)}
               className="rounded-lg w-full object-contain"
               style={{
                 border: "2px solid var(--color-border)",

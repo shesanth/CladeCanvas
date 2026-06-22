@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from cladecanvas.api import hardening
+from cladecanvas.api.main import get_cors_origins
 from cladecanvas.api.main import app
 from cladecanvas.api.routes.tree import get_db as get_tree_db
 from cladecanvas.schema import metadata_table, nodes
@@ -20,6 +21,31 @@ def test_read_path_indexes_are_declared_in_schema():
 
     assert REQUIRED_INDEXES["nodes"] <= node_indexes
     assert REQUIRED_INDEXES["metadata"] <= metadata_indexes
+
+
+def test_cors_origins_can_be_configured_for_deployments(monkeypatch):
+    monkeypatch.setenv(
+        "CLADECANVAS_CORS_ORIGINS",
+        "https://cladecanvas.example, https://preview.example/ ",
+    )
+
+    assert get_cors_origins() == [
+        "https://cladecanvas.example",
+        "https://preview.example",
+    ]
+
+
+def test_default_cors_allows_loopback_frontend():
+    client = TestClient(app)
+    response = client.options(
+        "/tree/root",
+        headers={
+            "Origin": "http://127.0.0.1:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
 
 
 def test_anonymous_read_rate_limit_blocks_after_window(monkeypatch):
