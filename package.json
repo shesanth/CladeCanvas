@@ -1,0 +1,11 @@
+{
+  "name": "cladecanvas",
+  "private": true,
+  "engines": {
+    "node": ">=20 <23",
+    "npm": ">=10 <11"
+  },
+  "scripts": {
+    "build:web": "cd cladecanvas/cladecanvas-ui && npm ci && npm run build"
+  }
+}

@@ -7,9 +7,9 @@ static_sites:
       repo: shesanth/CladeCanvas
       branch: main
       deploy_on_push: true
-    source_dir: cladecanvas/cladecanvas-ui
-    build_command: npm ci && npm run build
-    output_dir: out
+    source_dir: /
+    build_command: npm run build:web
+    output_dir: cladecanvas/cladecanvas-ui/out
     routes:
       - path: /
     envs:
