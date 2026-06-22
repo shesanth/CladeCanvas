@@ -4,7 +4,7 @@ region: nyc
 static_sites:
   - name: web
     github:
-      repo: YOUR_GITHUB_USER_OR_ORG/CladeCanvas
+      repo: shesanth/CladeCanvas
       branch: main
       deploy_on_push: true
     source_dir: cladecanvas/cladecanvas-ui
@@ -15,4 +15,4 @@ static_sites:
     envs:
       - key: NEXT_PUBLIC_API_BASE
         scope: BUILD_TIME
-        value: https://api.YOUR_DOMAIN
+        value: https://api.cladecanvas.org
