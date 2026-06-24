@@ -5,6 +5,7 @@ from cladecanvas.enrich import (
     clean_taxon_name,
     fetch_wikipedia_extract,
     fetch_wikidata,
+    infer_common_name,
 )
 
 
@@ -117,6 +118,20 @@ class TestFetchWikipediaExtract:
         text, url = fetch_wikipedia_extract("Q123")
         assert text is None
         assert url == "https://en.wikipedia.org/wiki/SomeTaxon"
+
+
+class TestInferCommonName:
+    def test_prefers_wikipedia_title_for_scientific_label(self):
+        assert infer_common_name(
+            "Glaucidium californicum",
+            "https://en.wikipedia.org/wiki/Northern_pygmy_owl",
+        ) == "Northern pygmy owl"
+
+    def test_keeps_non_scientific_label(self):
+        assert infer_common_name(
+            "Mountain pygmy owl",
+            "https://en.wikipedia.org/wiki/Mountain_pygmy_owl",
+        ) == "Mountain pygmy owl"
 
 
 class TestBuildFieldSources:

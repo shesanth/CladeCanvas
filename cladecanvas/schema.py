@@ -49,11 +49,31 @@ node_aliases = Table(
     Column("created_at", DateTime, nullable=True),
 )
 
+metadata_enrichment_attempts = Table(
+    "metadata_enrichment_attempts", metadata,
+    Column("node_id", Text, ForeignKey("nodes.node_id"), primary_key=True),
+    Column("ott_id", Integer, nullable=True),
+    Column("name", Text, nullable=True),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("attempt_count", Integer, nullable=False, server_default="0"),
+    Column("last_attempted_at", DateTime, nullable=True),
+    Column("last_success_at", DateTime, nullable=True),
+    Column("last_provider", Text, nullable=True),
+    Column("last_match_method", Text, nullable=True),
+    Column("last_error", Text, nullable=True),
+    Column("created_at", DateTime, nullable=True),
+    Column("updated_at", DateTime, nullable=True),
+    Column("next_retry_at", DateTime, nullable=True),
+)
+
 # Partial unique indexes — expressed here so Alembic autogenerate can see them
 Index("ix_nodes_ott_id", nodes.c.ott_id,
       unique=True, postgresql_where=nodes.c.ott_id.isnot(None))
 Index("ix_nodes_parent_node_id", nodes.c.parent_node_id)
 Index("ix_node_aliases_canonical_node_id", node_aliases.c.canonical_node_id)
+Index("ix_metadata_enrichment_attempts_status", metadata_enrichment_attempts.c.status)
+Index("ix_metadata_enrichment_attempts_next_retry_at", metadata_enrichment_attempts.c.next_retry_at)
+Index("ix_metadata_enrichment_attempts_ott_id", metadata_enrichment_attempts.c.ott_id)
 Index("ix_metadata_ott_id", metadata_table.c.ott_id,
       unique=True, postgresql_where=metadata_table.c.ott_id.isnot(None))
 Index("ix_metadata_common_name", metadata_table.c.common_name)
