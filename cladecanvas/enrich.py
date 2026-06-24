@@ -2,6 +2,7 @@ import requests
 from datetime import datetime, timezone
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql'
 HEADERS = {
@@ -57,7 +58,28 @@ def fetch_wikipedia_extract(wikidata_q):
     return None, wiki_page_url
 
 
-def build_field_sources(source_label, source_url, wiki_page_url=None, fallback=False):
+def infer_common_name(label, wiki_page_url):
+    if not wiki_page_url or not label:
+        return label
+
+    page_title = unquote(wiki_page_url.rsplit("/", 1)[-1]).replace("_", " ").strip()
+    if not page_title or page_title.casefold() == label.casefold():
+        return label
+
+    # Wikidata labels are often just binomials. Prefer the English Wikipedia
+    # title when it gives the common-language page name for that taxon.
+    if re.match(r"^[A-Z][a-z]+ [a-z][a-z-]+$", label):
+        return page_title
+    return label
+
+
+def build_field_sources(
+    source_label,
+    source_url,
+    wiki_page_url=None,
+    fallback=False,
+    common_name_from_wikipedia=False,
+):
     wikidata_source = {
         "source_label": source_label,
         "source_url": source_url,
@@ -69,7 +91,7 @@ def build_field_sources(source_label, source_url, wiki_page_url=None, fallback=F
         "fallback": fallback,
     }
     field_sources = {
-        "common_name": wikidata_source,
+        "common_name": wikipedia_source if common_name_from_wikipedia else wikidata_source,
         "description": wikidata_source,
         "image_url": wikidata_source,
         "rank": wikidata_source,
@@ -80,6 +102,9 @@ def build_field_sources(source_label, source_url, wiki_page_url=None, fallback=F
     return field_sources
 
 def fetch_wikidata(ott_nodes):
+    if not ott_nodes:
+        return []
+
     ott_id_map = {n['ott_id']: n['name'] for n in ott_nodes}
     ott_ids = list(ott_id_map.keys())
     miss_log_file = open(MISS_LOG, "a")
@@ -126,6 +151,7 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
         label = b['itemLabel']['value']
         rank = b.get('rankLabel', {}).get('value') if 'rankLabel' in b else None
         full_desc, wiki_page = fetch_wikipedia_extract(q)
+        common_name = infer_common_name(label, wiki_page)
         enriched_at = datetime.now(timezone.utc)
         source_url = f"https://www.wikidata.org/wiki/{q}"
         confidence = 1.0 if full_desc or image else 0.0
@@ -133,7 +159,7 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
         results.append({
             'ott_id': ott,
             'wikidata_q': q,
-            'common_name': label,
+            'common_name': common_name,
             'description': short_desc,
             'full_description': full_desc,
             'image_url': image,
@@ -147,7 +173,12 @@ SELECT ?ott ?item ?itemLabel ?desc ?image ?thumb ?rankLabel WHERE {{
             'source_match_method': "ott_id",
             'enriched_at': enriched_at,
             'provenance_confidence': confidence,
-            'field_sources': build_field_sources("Wikidata", source_url, wiki_page),
+            'field_sources': build_field_sources(
+                "Wikidata",
+                source_url,
+                wiki_page,
+                common_name_from_wikipedia=common_name != label,
+            ),
         })
 
     fallback_hits = 0
@@ -188,6 +219,7 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
         label = b['itemLabel']['value']
         rank = b.get('rankLabel', {}).get('value') if 'rankLabel' in b else None
         full_desc, wiki_page = fetch_wikipedia_extract(q)
+        common_name = infer_common_name(label, wiki_page)
         enriched_at = datetime.now(timezone.utc)
         source_url = f"https://www.wikidata.org/wiki/{q}"
         confidence = 0.7 if (full_desc or image) else 0.35
@@ -195,7 +227,7 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
         results.append({
             'ott_id': ott,
             'wikidata_q': q,
-            'common_name': label,
+            'common_name': common_name,
             'description': short_desc,
             'full_description': full_desc,
             'image_url': image,
@@ -214,6 +246,7 @@ SELECT ?item ?itemLabel ?desc ?image ?rankLabel WHERE {{
                 source_url,
                 wiki_page,
                 fallback=True,
+                common_name_from_wikipedia=common_name != label,
             ),
         })
         fallback_hits += 1
