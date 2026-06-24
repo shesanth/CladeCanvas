@@ -9,6 +9,11 @@ from cladecanvas.api.models import (
     SubtreeResponse,
 )
 from cladecanvas.api.deps import get_db
+from cladecanvas.api.aliases import (
+    canonicalize_node_row,
+    equivalent_node_ids,
+    resolve_node_id,
+)
 from cladecanvas.api.hardening import (
     MAX_CHILDREN_LIMIT,
     MAX_LINEAGE_DEPTH,
@@ -54,21 +59,27 @@ def get_children(
 
     def load_children():
         apply_statement_timeout(db)
+        canonical_parent_id = resolve_node_id(db, parent_id)
+        parent_ids = equivalent_node_ids(db, canonical_parent_id)
+        alias_ids = tuple(node_id for node_id in parent_ids if node_id != canonical_parent_id)
+        filters = [nodes.c.parent_node_id.in_(parent_ids)]
+        if alias_ids:
+            filters.append(nodes.c.node_id.not_in(alias_ids))
         total = db.execute(
-            select(func.count()).select_from(nodes).where(nodes.c.parent_node_id == parent_id)
+            select(func.count()).select_from(nodes).where(*filters)
         ).scalar_one()
         stmt = (
             select(nodes)
-            .where(nodes.c.parent_node_id == parent_id)
+            .where(*filters)
             .order_by(nodes.c.node_id)
             .limit(limit)
             .offset(offset)
         )
         result = db.execute(stmt).fetchall()
-        children = [dict(row._mapping) for row in result]
+        children = [canonicalize_node_row(db, dict(row._mapping)) for row in result]
         return {"children": children, "total": total}
 
-    payload = hot_read_cache.get_or_set(("children", parent_id, limit, offset), load_children)
+    payload = hot_read_cache.get_or_set(("children", resolve_node_id(db, parent_id), limit, offset), load_children)
     total = payload["total"]
     response.headers["X-Total-Count"] = str(total)
     response.headers["X-Limit"] = str(limit)
@@ -94,7 +105,7 @@ def get_lineage(
 def _load_lineage(node_id: str, max_depth: int, db: Session) -> dict[str, list[dict]]:
     apply_statement_timeout(db)
     lineage = []
-    current_id = node_id
+    current_id = resolve_node_id(db, node_id)
     seen = set()
     while current_id:
         if current_id in seen:
@@ -105,9 +116,9 @@ def _load_lineage(node_id: str, max_depth: int, db: Session) -> dict[str, list[d
         result = db.execute(select(nodes).where(nodes.c.node_id == current_id)).first()
         if not result:
             break
-        row = result._mapping
-        lineage.append(dict(row))
-        current_id = row["parent_node_id"]
+        row = canonicalize_node_row(db, dict(result._mapping))
+        lineage.append(row)
+        current_id = resolve_node_id(db, row["parent_node_id"]) if row.get("parent_node_id") else None
     return {"lineage": list(reversed(lineage))}
 
 @router.get("/context/{node_id:path}", response_model=ContextGraphResponse)
@@ -120,23 +131,16 @@ def get_context_graph(
 ):
     set_public_cache_headers(response)
     apply_statement_timeout(db)
-    lineage = []
-    current_id = node_id
-    seen = set()
-    while current_id:
-        if current_id in seen:
-            raise HTTPException(status_code=409, detail="Cycle detected in lineage")
-        seen.add(current_id)
-        result = db.execute(select(nodes).where(nodes.c.node_id == current_id)).first()
-        if not result:
-            if current_id == node_id:
-                raise HTTPException(status_code=404, detail="Node not found")
-            break
-        row = dict(result._mapping)
-        lineage.append(row)
-        current_id = row["parent_node_id"]
+    try:
+        lineage = _load_lineage(node_id, MAX_LINEAGE_DEPTH, db)["lineage"]
+    except HTTPException as exc:
+        if exc.status_code == 422:
+            raise HTTPException(status_code=409, detail="Cycle detected in lineage") from exc
+        raise
+    if not lineage:
+        raise HTTPException(status_code=404, detail="Node not found")
+    node_id = resolve_node_id(db, node_id)
 
-    lineage = list(reversed(lineage))
     lineage_ids = {row["node_id"] for row in lineage}
     graph_nodes = []
     edges = []
@@ -159,24 +163,26 @@ def get_context_graph(
         if not parent_id or sibling_limit == 0:
             continue
 
+        parent_ids = equivalent_node_ids(db, parent_id)
+        excluded_ids = set(lineage_ids).union(node_id for node_id in parent_ids if node_id != parent_id)
         sibling_rows = db.execute(
             select(nodes)
-            .where(nodes.c.parent_node_id == parent_id)
-            .where(nodes.c.node_id.not_in(lineage_ids))
+            .where(nodes.c.parent_node_id.in_(parent_ids))
+            .where(nodes.c.node_id.not_in(excluded_ids))
             .order_by(*NODE_ORDER)
             .limit(sibling_limit)
         ).fetchall()
         sibling_total = db.execute(
             select(func.count())
             .select_from(nodes)
-            .where(nodes.c.parent_node_id == parent_id)
-            .where(nodes.c.node_id.not_in(lineage_ids))
+            .where(nodes.c.parent_node_id.in_(parent_ids))
+            .where(nodes.c.node_id.not_in(excluded_ids))
         ).scalar_one()
         omitted = max(0, sibling_total - len(sibling_rows))
         if omitted:
             omitted_by_parent[parent_id] = omitted_by_parent.get(parent_id, 0) + omitted
         for sibling in sibling_rows:
-            sibling_row = dict(sibling._mapping)
+            sibling_row = canonicalize_node_row(db, dict(sibling._mapping))
             add_node(sibling_row, "sibling", depth)
             edges.append({
                 "source": parent_id,
@@ -184,20 +190,25 @@ def get_context_graph(
                 "kind": "sibling",
             })
 
+    child_parent_ids = equivalent_node_ids(db, node_id)
+    child_excluded_ids = tuple(child_id for child_id in child_parent_ids if child_id != node_id)
+    child_filters = [nodes.c.parent_node_id.in_(child_parent_ids)]
+    if child_excluded_ids:
+        child_filters.append(nodes.c.node_id.not_in(child_excluded_ids))
     child_rows = db.execute(
         select(nodes)
-        .where(nodes.c.parent_node_id == node_id)
+        .where(*child_filters)
         .order_by(*NODE_ORDER)
         .limit(child_limit)
     ).fetchall()
     child_total = db.execute(
-        select(func.count()).select_from(nodes).where(nodes.c.parent_node_id == node_id)
+        select(func.count()).select_from(nodes).where(*child_filters)
     ).scalar_one()
     omitted_children = max(0, child_total - len(child_rows))
     if omitted_children:
         omitted_by_parent[node_id] = omitted_by_parent.get(node_id, 0) + omitted_children
     for child in child_rows:
-        child_row = dict(child._mapping)
+        child_row = canonicalize_node_row(db, dict(child._mapping))
         add_node(child_row, "child", len(lineage))
         edges.append({
             "source": node_id,
@@ -233,19 +244,25 @@ def _load_subtree(node_id: str, depth: int, max_nodes: int, db: Session) -> dict
     apply_statement_timeout(db)
     nodes_result = []
     def recurse(current_id, d):
+        current_id = resolve_node_id(db, current_id)
         if d < 0:
             return
         if len(nodes_result) >= max_nodes:
             raise HTTPException(status_code=413, detail="Subtree exceeds max_nodes")
         result = db.execute(select(nodes).where(nodes.c.node_id == current_id)).first()
         if result:
-            nodes_result.append(dict(result._mapping))
+            nodes_result.append(canonicalize_node_row(db, dict(result._mapping)))
         if d == 0:
             return
+        child_parent_ids = equivalent_node_ids(db, current_id)
+        child_excluded_ids = tuple(child_id for child_id in child_parent_ids if child_id != current_id)
+        child_filters = [nodes.c.parent_node_id.in_(child_parent_ids)]
+        if child_excluded_ids:
+            child_filters.append(nodes.c.node_id.not_in(child_excluded_ids))
         children = (
             db.execute(
                 select(nodes)
-                .where(nodes.c.parent_node_id == current_id)
+                .where(*child_filters)
                 .order_by(nodes.c.node_id)
                 .limit(max_nodes - len(nodes_result))
             )
