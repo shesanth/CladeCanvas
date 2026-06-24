@@ -119,9 +119,10 @@ function ExplorerPage() {
           () => [] as TreeNode[]
         );
         if (!isActive()) return;
+        const selectedNodeIds = new Set([nodeId, node.node_id]);
         const sibs = topByScore(
           parentKids.filter(
-            (c) => c.node_id !== nodeId && c.node_id !== parentNode.node_id
+            (c) => !selectedNodeIds.has(c.node_id) && c.node_id !== parentNode.node_id
           ),
           100
         );
@@ -262,7 +263,7 @@ function ExplorerPage() {
         {navigationMode === "overview" && (
           <ContextOverviewRail
             graph={contextGraph}
-            selectedNodeId={selectedNodeId}
+            selectedNodeId={selectedNode?.node_id ?? selectedNodeId}
             onSelect={onSelectNode}
           />
         )}

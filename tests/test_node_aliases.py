@@ -108,3 +108,19 @@ def test_search_dedupes_alias_to_canonical():
     assert response.status_code == 200
     ids = [row["node_id"] for row in response.json()]
     assert ids == ["canonical"]
+
+def test_context_graph_excludes_alias_equivalents_from_siblings():
+    app, client = _client_with_alias_db()
+    try:
+        response = client.get("/tree/context/alias-child?sibling_limit=10&child_limit=10")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    lineage_ids = [node["node_id"] for node in data["lineage"]]
+    sibling_ids = [node["node_id"] for node in data["nodes"] if node["kind"] == "sibling"]
+
+    assert lineage_ids == ["root", "canonical", "alias-child"]
+    assert "alias" not in sibling_ids
+    assert "canonical" not in sibling_ids

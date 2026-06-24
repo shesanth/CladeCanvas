@@ -142,6 +142,9 @@ def get_context_graph(
     node_id = resolve_node_id(db, node_id)
 
     lineage_ids = {row["node_id"] for row in lineage}
+    lineage_equivalent_ids = set()
+    for lineage_id in lineage_ids:
+        lineage_equivalent_ids.update(equivalent_node_ids(db, lineage_id))
     graph_nodes = []
     edges = []
     omitted_by_parent = {}
@@ -164,7 +167,9 @@ def get_context_graph(
             continue
 
         parent_ids = equivalent_node_ids(db, parent_id)
-        excluded_ids = set(lineage_ids).union(node_id for node_id in parent_ids if node_id != parent_id)
+        excluded_ids = set(lineage_equivalent_ids).union(
+            node_id for node_id in parent_ids if node_id != parent_id
+        )
         sibling_rows = db.execute(
             select(nodes)
             .where(nodes.c.parent_node_id.in_(parent_ids))
