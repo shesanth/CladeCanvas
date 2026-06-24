@@ -39,7 +39,7 @@ The synthesis tree contains ~1.7M nodes under Metazoa, including ~65K synthetic 
 
 - Python 3.11+
 - PostgreSQL for full data loading/enrichment
-- Node.js 18+
+- Node.js 20+
 
 For API/frontend development without a local PostgreSQL database, set
 `CLADECANVAS_DEV_SQLITE=1`. The API will use the checked-in
@@ -149,7 +149,7 @@ Fetches the Metazoa subtree from the OToL arguson API and writes `data/metazoa_n
 python -m cladecanvas.fetch_otol
 ```
 
-The download proceeds in waves — each wave expands truncated nodes from the previous one until the full tree is captured. Synthetic MRCA nodes get readable names derived from `descendant_name_list` (e.g. "Bilateria + Porifera" instead of `mrcaott42ott3989`).
+The download proceeds in waves; each wave expands truncated nodes from the previous one until the full tree is captured. Synthetic MRCA nodes get readable names derived from `descendant_name_list` (e.g. "Bilateria + Porifera" instead of `mrcaott42ott3989`).
 
 ### 4. Load nodes into PostgreSQL
 
@@ -235,58 +235,123 @@ browser Performance API. Recent samples are available at
 
 ## Hosting
 
-CladeCanvas is split into two deployable services:
+Production is hosted on DigitalOcean App Platform with Cloudflare DNS:
 
-- FastAPI backend from the repository root, served with
-  `uvicorn cladecanvas.api.main:app`.
-- Next.js frontend from `cladecanvas/cladecanvas-ui`, built with
-  `npm run build` and served with `npm run start`.
+- Public site: https://cladecanvas.org
+- Public API: https://api.cladecanvas.org
+- Temporary API origin: `https://cladecanvas-gx5ia.ondigitalocean.app`
+- Temporary frontend origin: `https://cladecanvas-ui-vae44.ondigitalocean.app`
 
-For a hosted environment, configure the backend with PostgreSQL and set the
-frontend origin explicitly:
+The app is intentionally split into two DigitalOcean App Platform apps:
+
+- API app: FastAPI service built from the repository root with `Dockerfile`.
+- Web app: static Next.js export built from `cladecanvas/cladecanvas-ui`.
+
+The API root path returns `404`; that is expected. Use `/tree/root` for a
+production API smoke test:
+
+```bash
+curl https://api.cladecanvas.org/tree/root
+```
+
+The frontend can be smoke-tested with a selected node:
+
+```text
+https://cladecanvas.org/?node=ott683263&nav=local
+```
+
+### Production Environment
+
+API app environment variables:
 
 ```bash
 CLADECANVAS_DB_PROFILE=prod
-POSTGRES_URL=postgresql://user:password@host:5432/cladecanvas
-CLADECANVAS_CORS_ORIGINS=https://your-frontend.example
+POSTGRES_URL=postgresql://... # DigitalOcean managed Postgres URL; secret, run-time only
+CLADECANVAS_CORS_ORIGINS=https://cladecanvas.org
+CLADECANVAS_QUERY_TIMEOUT_MS=3000
+CLADECANVAS_ANON_READS_PER_MINUTE=120
 ```
 
-Configure the frontend with the public API URL:
+Frontend static-site environment variables:
 
 ```bash
-NEXT_PUBLIC_API_BASE=https://your-api.example
+NEXT_PUBLIC_API_BASE=https://api.cladecanvas.org
 ```
 
-The root `.env.example` and `cladecanvas/cladecanvas-ui/.env.example` files
-contain the minimal deployment variables. Keep `CLADECANVAS_DEV_SQLITE=1` for
-local read-only demos only; production should use PostgreSQL.
+`NEXT_PUBLIC_API_BASE` is a build-time value and is safe to leave unencrypted.
+`POSTGRES_URL` must be encrypted and must never be added to the frontend app.
+Keep `CLADECANVAS_DEV_SQLITE=1` for local read-only demos only; production uses
+PostgreSQL.
 
 ### DigitalOcean App Platform
 
-The repository includes DigitalOcean App Platform templates:
+The repository includes DigitalOcean App Platform specs:
 
-- `.do/api-app.yaml` deploys the FastAPI service and a managed PostgreSQL
-  database.
-- `.do/web-app.yaml` deploys the Next.js frontend as a static site.
-
-Use separate domains so the API does not need path-prefix rewriting:
-
-- `https://your-domain.example` -> static frontend
-- `https://api.your-domain.example` -> FastAPI backend
-
-Before importing the specs, replace `YOUR_GITHUB_USER_OR_ORG/CladeCanvas` and
-`YOUR_DOMAIN` in both `.do/*.yaml` files.
+- `.do/api-app.yaml` deploys the FastAPI API service.
+- `.do/web-app.yaml` deploys the static frontend.
 
 The API deploy uses `Dockerfile` and `requirements-api.txt` to keep production
-dependencies lean. The frontend deploy uses `output: "export"` and publishes
-`cladecanvas/cladecanvas-ui/out`.
+dependencies lean. The frontend deploy uses Next.js `output: "export"` and
+publishes `cladecanvas/cladecanvas-ui/out`.
 
-To move the local PostgreSQL database into the managed database, dump locally
-and restore to DigitalOcean:
+If DigitalOcean's UI does not expose a source-directory field for the static
+site, build from the repository root and use:
 
 ```bash
-pg_dump "$POSTGRES_URL" --format=custom --file=cladecanvas.dump
+npm run build:web
+```
+
+with output directory:
+
+```text
+cladecanvas/cladecanvas-ui/out
+```
+
+The root `package.json` exists only to make the monorepo static-site build
+obvious to DigitalOcean and to provide `build:web`.
+
+### Domains and DNS
+
+Cloudflare DNS is authoritative for `cladecanvas.org`.
+
+API:
+
+```text
+api.cladecanvas.org -> CNAME -> cladecanvas-gx5ia.ondigitalocean.app
+```
+
+Frontend:
+
+```text
+cladecanvas.org -> CNAME -> cladecanvas-ui-vae44.ondigitalocean.app
+```
+
+During DigitalOcean domain verification, keep Cloudflare records as DNS-only
+rather than proxied. After certificates are active, proxying can be enabled if
+desired, but Cloudflare SSL mode must remain `Full`, not `Flexible`.
+
+### Database Restore
+
+The deployed managed PostgreSQL database was initially restored from the local
+PostgreSQL database. At restore time the production database contained:
+
+- `nodes`: 2,935,501 rows
+- `metadata`: 1,399,739 rows
+- root node: `ott691846` / `Metazoa`
+
+To refresh or re-seed the managed database from local PostgreSQL:
+
+```bash
+pg_dump "$POSTGRES_URL" --format=custom --no-owner --file=cladecanvas.dump
 pg_restore --clean --if-exists --no-owner --dbname="$DIGITALOCEAN_POSTGRES_URL" cladecanvas.dump
+```
+
+Then verify basic counts and the root node:
+
+```sql
+select count(*) from nodes;
+select count(*) from metadata;
+select node_id, name from nodes where parent_node_id is null limit 1;
 ```
 
 After restoring, verify the hot read indexes:
@@ -294,6 +359,15 @@ After restoring, verify the hot read indexes:
 ```bash
 POSTGRES_URL="$DIGITALOCEAN_POSTGRES_URL" python scripts/verify_db_indexes.py
 ```
+
+### Operational Notes
+
+- Keep the DigitalOcean API app as a trusted source for the managed database.
+- Remove temporary personal IP trusted sources after maintenance restores.
+- Rotate the managed database password if the connection string is ever pasted
+  into chat, screenshots, logs, or an untrusted place. Update the API app's
+  encrypted `POSTGRES_URL` and redeploy after rotation.
+- Autodeploy is enabled from `main` for both DigitalOcean apps.
 
 ## API Endpoints
 
