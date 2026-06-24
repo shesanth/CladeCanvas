@@ -27,9 +27,24 @@ const DEFAULT_ROOT = "ott691846"; // Metazoa
 
 export default function Page() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<LoadingShell />}>
       <ExplorerPage />
     </Suspense>
+  );
+}
+
+function LoadingShell() {
+  return (
+    <main
+      className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 min-h-screen"
+      style={{ color: "var(--color-ink)" }}
+    >
+      <div className="skeleton h-8 w-44 mb-5" />
+      <div className="skeleton h-[300px] w-full rounded-xl" />
+      <div className="skeleton h-8 w-56 mt-6" />
+      <div className="skeleton h-4 w-full mt-3" />
+      <div className="skeleton h-4 w-3/4 mt-2" />
+    </main>
   );
 }
 
@@ -51,59 +66,59 @@ function ExplorerPage() {
   const [siblings, setSiblings] = useState<TreeNode[]>([]);
   const [children, setChildren] = useState<TreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const loadNode = useCallback(async (nodeId: string) => {
     const transitionMark = markStart("node_navigation", nodeId);
-    // Cancel in-flight metadata request
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    const isActive = () => requestIdRef.current === requestId && !controller.signal.aborted;
 
     setIsLoading(true);
+    setLoadError(null);
     setSelectedNodeId(nodeId);
     setContextGraph(null);
 
     try {
-      // Phase 1: parallel fetches for the selected node
-      const [node, meta, lin, kids] = await Promise.all([
-        fetchNode(nodeId).catch(() => null),
-        fetchMetadata(nodeId, controller.signal).catch(() => null),
-        fetchLineage(nodeId).catch(() => [] as TreeNode[]),
-        fetchChildren(nodeId).catch(() => [] as TreeNode[]),
-      ]);
+      const node = await fetchNode(nodeId, controller.signal);
+      if (!isActive()) return;
 
-      if (controller.signal.aborted) return;
-      if (!node) {
-        // API unreachable — bail gracefully
-        setIsLoading(false);
-        return;
-      }
+      const [meta, lin, kids] = await Promise.all([
+        fetchMetadata(nodeId, controller.signal).catch(() => null),
+        fetchLineage(nodeId, controller.signal).catch(() => [] as TreeNode[]),
+        fetchChildren(nodeId, controller.signal).catch(() => [] as TreeNode[]),
+      ]);
+      if (!isActive()) return;
 
       setSelectedNode(node);
       setMetadata(meta);
       setLineage(lin);
       setChildren(topByScore(kids, 100));
-      fetchContextGraph(nodeId)
+
+      fetchContextGraph(nodeId, controller.signal)
         .then((graph) => {
-          if (!controller.signal.aborted) setContextGraph(graph);
+          if (isActive()) setContextGraph(graph);
         })
-        .catch(() => {
-          if (!controller.signal.aborted) setContextGraph(null);
+        .catch((err: unknown) => {
+          if (!isActive()) return;
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setContextGraph(null);
         });
 
-      // Phase 2: get parent and siblings from lineage
-      const parentNode =
-        lin.length >= 2 ? lin[lin.length - 2] : null;
+      const parentNode = lin.length >= 2 ? lin[lin.length - 2] : null;
       setParent(parentNode);
 
       if (parentNode) {
-        const parentKids = await fetchChildren(parentNode.node_id).catch(
+        const parentKids = await fetchChildren(parentNode.node_id, controller.signal).catch(
           () => [] as TreeNode[]
         );
-        if (controller.signal.aborted) return;
-        // Siblings = parent's children minus selected and parent itself
+        if (!isActive()) return;
         const sibs = topByScore(
           parentKids.filter(
             (c) => c.node_id !== nodeId && c.node_id !== parentNode.node_id
@@ -117,11 +132,20 @@ function ExplorerPage() {
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("loadNode error:", err);
+      if (!isActive()) return;
+      setSelectedNode(null);
+      setMetadata(null);
+      setLineage([]);
+      setParent(null);
+      setSiblings([]);
+      setChildren([]);
+      setContextGraph(null);
+      setLoadError(`Could not load ${nodeId}.`);
     } finally {
       markEnd(transitionMark, "node_navigation", nodeId, {
         aborted: String(controller.signal.aborted),
       });
-      if (!controller.signal.aborted) setIsLoading(false);
+      if (isActive()) setIsLoading(false);
     }
   }, []);
 
@@ -212,6 +236,27 @@ function ExplorerPage() {
         onSelect={onSelectNode}
         onModeChange={onModeChange}
       />
+
+
+      {isLoading && selectedNode && (
+        <div className="text-xs" style={{ color: "var(--color-ink-muted)" }}>
+          Loading selection...
+        </div>
+      )}
+
+      {loadError && (
+        <div
+          role="alert"
+          className="my-4 rounded-lg p-4 text-sm"
+          style={{
+            background: "rgba(135, 64, 46, 0.1)",
+            border: "1px solid rgba(135, 64, 46, 0.24)",
+            color: "#87402e",
+          }}
+        >
+          {loadError} Try another nearby clade or reload once the API is available.
+        </div>
+      )}
 
       <div className="explorer-layout">
         {navigationMode === "overview" && (

@@ -60,7 +60,7 @@ function verticalConstants() {
     childRowGap: 54,
     siblingGap: 86,
     childGapX: 60,
-    maxSiblings: 3,
+    maxSiblings: 0,
     maxChildren: 5,
   };
 }

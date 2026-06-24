@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from cladecanvas.api.deps import get_db
+from cladecanvas.api.aliases import resolve_node_id
 from cladecanvas.api.hardening import (
     MAX_SEARCH_LIMIT,
     apply_statement_timeout,
@@ -122,6 +123,7 @@ def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchRe
             rows = db.execute(
                 base_select
                 .where(or_(*filters))
+                .order_by(c.node_id)
                 .limit(candidate_limit)
             ).mappings().fetchall()
             rows_by_id.update({row["node_id"]: row for row in rows})
@@ -141,42 +143,50 @@ def _search_nodes(q: str, limit: int, offset: int, db: Session) -> list[SearchRe
             if result:
                 ranked.append((result, row))
 
-    if not ranked:
-        existing_ids = set()
-        description_filters = []
-        for term in query_terms:
-            contains_pattern = f"%{term}%"
-            if len(term) >= 4:
-                description_filters.append(c.description.ilike(contains_pattern))
-            if len(term) >= 6:
-                description_filters.append(c.full_description.ilike(contains_pattern))
+    existing_ids = {result.node_id for result, _ in ranked}
+    description_filters = []
+    for term in query_terms:
+        contains_pattern = f"%{term}%"
+        if len(term) >= 4:
+            description_filters.append(c.description.ilike(contains_pattern))
+        if len(term) >= 6:
+            description_filters.append(c.full_description.ilike(contains_pattern))
 
-        if description_filters:
-            description_stmt = (
-                base_select
-                .where(or_(*description_filters))
-                .limit(candidate_limit)
-            )
-            for row in db.execute(description_stmt).mappings().fetchall():
-                if row["node_id"] in existing_ids:
-                    continue
-                result = rank_search_row(row, q)
-                if result:
-                    ranked.append((result, row))
-                    existing_ids.add(result.node_id)
+    if description_filters:
+        description_stmt = (
+            base_select
+            .where(or_(*description_filters))
+            .order_by(c.node_id)
+            .limit(candidate_limit)
+        )
+        for row in db.execute(description_stmt).mappings().fetchall():
+            if row["node_id"] in existing_ids:
+                continue
+            result = rank_search_row(row, q)
+            if result:
+                ranked.append((result, row))
+                existing_ids.add(result.node_id)
 
     if not ranked:
         return []
 
     results = []
     row_by_id = {result.node_id: row for result, row in ranked}
-    for result in sort_ranked_results([result for result, _ in ranked])[offset:offset + limit]:
+    seen_canonical_ids = set()
+    for result in sort_ranked_results([result for result, _ in ranked]):
+        canonical_id = resolve_node_id(db, result.node_id)
+        if canonical_id in seen_canonical_ids:
+            continue
+        seen_canonical_ids.add(canonical_id)
         row = row_by_id[result.node_id]
         payload = {
             **result.__dict__,
+            "node_id": canonical_id,
             "source_label": row.get("source_label"),
             "enriched_at": row.get("enriched_at"),
             "provenance_confidence": row.get("provenance_confidence"),
         }
         results.append(SearchResult(**payload))
-    return results
+        if len(results) >= offset + limit:
+            break
+    return results[offset:offset + limit]

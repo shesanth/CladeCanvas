@@ -117,14 +117,14 @@ async function fetchJSONWithHeaders<T>(
   return { data: await res.json(), headers: res.headers };
 }
 
-export async function fetchNode(nodeId: string): Promise<TreeNode> {
+export async function fetchNode(nodeId: string, signal?: AbortSignal): Promise<TreeNode> {
   const cached = nodeCache.get(nodeId);
   if (cached) {
     recordDuration("cache_lookup", "node", 0, { hit: "true" });
     return cached;
   }
   const mark = markStart("api_request", `/node/${nodeId}`);
-  const res = await fetch(`${API}/node/${nodeId}`);
+  const res = await fetch(`${API}/node/${nodeId}`, { signal });
   markEnd(mark, "api_request", `/node/${nodeId}`, { status: String(res.status) });
   if (!res.ok) throw new Error(`${res.status}`);
   const node: TreeNode = await res.json();
@@ -154,7 +154,10 @@ export async function fetchMetadata(
   }
 }
 
-export async function fetchChildren(nodeId: string): Promise<TreeNode[]> {
+export async function fetchChildren(
+  nodeId: string,
+  signal?: AbortSignal
+): Promise<TreeNode[]> {
   const cached = childrenCache.get(nodeId);
   if (cached) {
     recordDuration("cache_lookup", "children", 0, { hit: "true" });
@@ -166,7 +169,8 @@ export async function fetchChildren(nodeId: string): Promise<TreeNode[]> {
 
   while (hasMore) {
     const { data, headers } = await fetchJSONWithHeaders<TreeNode[]>(
-      `/tree/children/${nodeId}?limit=${CHILDREN_PAGE_LIMIT}&offset=${offset}`
+      `/tree/children/${nodeId}?limit=${CHILDREN_PAGE_LIMIT}&offset=${offset}`,
+      signal
     );
     children.push(...data);
 
@@ -185,13 +189,19 @@ export async function fetchChildren(nodeId: string): Promise<TreeNode[]> {
   return children;
 }
 
-export async function fetchLineage(nodeId: string): Promise<TreeNode[]> {
+export async function fetchLineage(
+  nodeId: string,
+  signal?: AbortSignal
+): Promise<TreeNode[]> {
   const cached = lineageCache.get(nodeId);
   if (cached) {
     recordDuration("cache_lookup", "lineage", 0, { hit: "true" });
     return cached;
   }
-  const data = await fetchJSON<{ lineage: TreeNode[] }>(`/tree/lineage/${nodeId}`);
+  const data = await fetchJSON<{ lineage: TreeNode[] }>(
+    `/tree/lineage/${nodeId}`,
+    signal
+  );
   const lineage = data.lineage;
   lineageCache.set(nodeId, lineage);
   recordDuration("cache_lookup", "lineage", 0, { hit: "false" });
@@ -199,10 +209,13 @@ export async function fetchLineage(nodeId: string): Promise<TreeNode[]> {
   return lineage;
 }
 
-export async function fetchContextGraph(nodeId: string): Promise<ContextGraph> {
+export async function fetchContextGraph(
+  nodeId: string,
+  signal?: AbortSignal
+): Promise<ContextGraph> {
   const cached = contextGraphCache.get(nodeId);
   if (cached) return cached;
-  const graph = await fetchJSON<ContextGraph>(`/tree/context/${nodeId}`);
+  const graph = await fetchJSON<ContextGraph>(`/tree/context/${nodeId}`, signal);
   contextGraphCache.set(nodeId, graph);
   for (const node of graph.nodes) nodeCache.set(node.node_id, node);
   lineageCache.set(nodeId, graph.lineage);

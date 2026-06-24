@@ -40,10 +40,20 @@ metadata_table = Table(
     Column("field_sources", JSON, nullable=False, server_default=text("'{}'")),
 )
 
+node_aliases = Table(
+    "node_aliases", metadata,
+    Column("alias_node_id", Text, ForeignKey("nodes.node_id"), primary_key=True),
+    Column("canonical_node_id", Text, ForeignKey("nodes.node_id"), nullable=False),
+    Column("reason", Text, nullable=False, server_default="canonical_alias"),
+    Column("confidence", Float, nullable=False, server_default="1"),
+    Column("created_at", DateTime, nullable=True),
+)
+
 # Partial unique indexes — expressed here so Alembic autogenerate can see them
 Index("ix_nodes_ott_id", nodes.c.ott_id,
       unique=True, postgresql_where=nodes.c.ott_id.isnot(None))
 Index("ix_nodes_parent_node_id", nodes.c.parent_node_id)
+Index("ix_node_aliases_canonical_node_id", node_aliases.c.canonical_node_id)
 Index("ix_metadata_ott_id", metadata_table.c.ott_id,
       unique=True, postgresql_where=metadata_table.c.ott_id.isnot(None))
 Index("ix_metadata_common_name", metadata_table.c.common_name)
