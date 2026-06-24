@@ -13,7 +13,7 @@ import {
   type TreeNode,
   type Metadata,
 } from "./lib/api";
-import { topByScore } from "./lib/scoring";
+import { sortByScore } from "./lib/scoring";
 import SearchBar from "./components/SearchBar";
 import Breadcrumb from "./components/Breadcrumb";
 import LocalCladogram from "./components/LocalCladogram";
@@ -99,7 +99,7 @@ function ExplorerPage() {
       setSelectedNode(node);
       setMetadata(meta);
       setLineage(lin);
-      setChildren(topByScore(kids, 100));
+      setChildren(sortByScore(kids));
 
       fetchContextGraph(nodeId, controller.signal)
         .then((graph) => {
@@ -120,11 +120,10 @@ function ExplorerPage() {
         );
         if (!isActive()) return;
         const selectedNodeIds = new Set([nodeId, node.node_id]);
-        const sibs = topByScore(
+        const sibs = sortByScore(
           parentKids.filter(
             (c) => !selectedNodeIds.has(c.node_id) && c.node_id !== parentNode.node_id
-          ),
-          100
+          )
         );
         setSiblings(sibs);
       } else {
@@ -300,3 +299,4 @@ function ExplorerPage() {
     </main>
   );
 }
+

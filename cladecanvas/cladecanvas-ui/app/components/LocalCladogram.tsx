@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TreeNode } from "../lib/api";
 import { computeLayout, type BranchPath } from "../lib/tree-layout";
@@ -41,6 +47,13 @@ export default function LocalCladogram({
   const rippleCounter = useRef(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(getDisplayMode);
+  const [showAllChildren, setShowAllChildren] = useState(false);
+  const [showAllSiblings, setShowAllSiblings] = useState(false);
+
+  useEffect(() => {
+    setShowAllChildren(false);
+    setShowAllSiblings(false);
+  }, [selected.node_id]);
 
   useEffect(() => {
     const phoneMedia = window.matchMedia("(max-width: 639px)");
@@ -65,6 +78,8 @@ export default function LocalCladogram({
   const layout = computeLayout(parent, siblings, selected, childNodes, {
     compact: isCompact,
     orientation: isVertical ? "vertical" : "horizontal",
+    maxChildren: showAllChildren ? childNodes.length : undefined,
+    maxSiblings: showAllSiblings ? siblings.length : undefined,
   });
   const { nodes, paths, width, height, overflowSiblings, overflowChildren } = layout;
 
@@ -82,6 +97,24 @@ export default function LocalCladogram({
       }, 150);
     },
     [selected.node_id, onSelect, isTransitioning]
+  );
+
+  const handleShowAllChildren = useCallback(() => {
+    setShowAllChildren(true);
+  }, []);
+
+  const handleShowAllSiblings = useCallback(() => {
+    setShowAllSiblings(true);
+  }, []);
+
+  const handleOverflowKeyDown = useCallback(
+    (event: KeyboardEvent<SVGGElement>, showAll: () => void) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showAll();
+      }
+    },
+    []
   );
 
   const svgHeight = Math.max(height, isVertical ? 220 : isCompact ? 180 : 200);
@@ -148,37 +181,61 @@ export default function LocalCladogram({
             {overflowSiblings > 0 && (() => {
               const sibNode = nodes.find((n) => n.column === "sibling");
               return sibNode ? (
-                <text
-                  x={sibNode.x}
-                  y={height - 8}
-                  textAnchor="middle"
-                  style={{
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: isCompact ? 9 : 10,
-                    fill: "var(--color-ink-muted)",
-                    fontStyle: "italic",
-                  }}
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Show ${overflowSiblings} more siblings`}
+                  onClick={handleShowAllSiblings}
+                  onKeyDown={(event) =>
+                    handleOverflowKeyDown(event, handleShowAllSiblings)
+                  }
                 >
-                  +{overflowSiblings} more siblings
-                </text>
+                  <text
+                    x={sibNode.x}
+                    y={height - 8}
+                    textAnchor="middle"
+                    style={{
+                      cursor: "pointer",
+                      fontFamily: "var(--font-inter), sans-serif",
+                      fontSize: isCompact ? 9 : 10,
+                      fill: "var(--color-ink-muted)",
+                      fontStyle: "italic",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    +{overflowSiblings} more siblings
+                  </text>
+                </g>
               ) : null;
             })()}
             {overflowChildren > 0 && (() => {
               const childNode = nodes.find((n) => n.column === "child");
               return childNode ? (
-                <text
-                  x={childNode.x}
-                  y={height - 8}
-                  textAnchor="middle"
-                  style={{
-                    fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: isCompact ? 9 : 10,
-                    fill: "var(--color-ink-muted)",
-                    fontStyle: "italic",
-                  }}
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Show ${overflowChildren} more children`}
+                  onClick={handleShowAllChildren}
+                  onKeyDown={(event) =>
+                    handleOverflowKeyDown(event, handleShowAllChildren)
+                  }
                 >
-                  +{overflowChildren} more children
-                </text>
+                  <text
+                    x={childNode.x}
+                    y={height - 8}
+                    textAnchor="middle"
+                    style={{
+                      cursor: "pointer",
+                      fontFamily: "var(--font-inter), sans-serif",
+                      fontSize: isCompact ? 9 : 10,
+                      fill: "var(--color-ink-muted)",
+                      fontStyle: "italic",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    +{overflowChildren} more children
+                  </text>
+                </g>
               ) : null;
             })()}
           </motion.g>
