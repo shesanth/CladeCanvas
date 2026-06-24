@@ -24,7 +24,7 @@ export default function JumpControls({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 py-3"
+      className="flex flex-wrap items-center gap-2 py-2.5 sm:py-3"
       aria-label="Navigation controls"
     >
       <button
@@ -59,7 +59,7 @@ export default function JumpControls({
       </button>
 
       <div
-        className="ml-auto inline-flex overflow-hidden rounded-md"
+        className="mt-1 inline-flex w-full overflow-hidden rounded-md sm:mt-0 sm:ml-auto sm:w-auto"
         style={{ border: "1px solid var(--color-border)" }}
       >
         {(["local", "overview"] as const).map((option) => (
@@ -67,7 +67,7 @@ export default function JumpControls({
             key={option}
             type="button"
             onClick={() => onModeChange(option)}
-            className="px-3 py-1.5 text-xs font-medium capitalize transition-colors"
+            className="min-h-10 flex-1 px-3 py-2 text-xs font-medium capitalize transition-colors sm:min-h-0 sm:flex-none sm:py-1.5"
             aria-pressed={mode === option}
             style={{
               background:

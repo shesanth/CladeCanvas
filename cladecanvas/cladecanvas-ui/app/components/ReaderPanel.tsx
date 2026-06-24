@@ -149,7 +149,7 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="rounded-xl p-6 md:p-8"
+        className="overflow-hidden rounded-lg p-4 sm:rounded-xl sm:p-6 md:p-8"
         style={{
           background: "var(--color-paper-light)",
           border: "1px solid var(--color-border)",
@@ -158,7 +158,7 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
         {/* Header */}
         <div className="mb-4">
           <h2
-            className="text-2xl md:text-3xl font-bold leading-tight"
+            className="break-words text-2xl md:text-3xl font-bold leading-tight"
             style={{
               fontFamily: "var(--font-playfair), serif",
               color: "var(--color-ink)",
@@ -183,7 +183,7 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
               <FieldSourceLabel source={fieldSources.common_name} />
             </div>
           )}
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
             {(metadata?.rank || node.rank) && (
               <span
                 className="text-xs px-2.5 py-1 rounded-full font-medium capitalize"
@@ -243,7 +243,7 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
 
         {/* Image */}
         {imageUrl && (
-          <figure className="float-right ml-6 mb-4 max-w-[280px] md:max-w-[360px]">
+          <figure className="mb-4 w-full max-w-full sm:float-right sm:ml-6 sm:max-w-[280px] md:max-w-[360px]">
             <motion.img
               src={imageUrl}
               alt={title}
@@ -257,7 +257,7 @@ export default function ReaderPanel({ metadata, node, children }: Props) {
                 boxShadow: "0 4px 16px rgba(44, 36, 22, 0.1)",
               }}
             />
-            <figcaption className="mt-1 text-right">
+            <figcaption className="mt-1 text-left sm:text-right">
               <FieldSourceLabel source={fieldSources.image_url} />
             </figcaption>
           </figure>

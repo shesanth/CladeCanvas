@@ -36,11 +36,11 @@ export default function Breadcrumb({ lineage, onSelect }: Props) {
 
   return (
     <nav
-      className="text-sm py-2 flex flex-wrap items-center gap-0.5"
+      className="text-sm py-2 flex items-center gap-0.5 overflow-x-auto whitespace-nowrap scrollbar-thin"
       style={{ color: "var(--color-ink-muted)" }}
     >
       {entries.map((entry, idx) => (
-        <span key={entry.node.node_id} className="flex items-center gap-0.5">
+        <span key={entry.node.node_id} className="flex flex-none items-center gap-0.5">
           {idx > 0 && (
             <span className="mx-1 select-none" style={{ color: "var(--color-border)" }}>
               ›
@@ -48,7 +48,7 @@ export default function Breadcrumb({ lineage, onSelect }: Props) {
           )}
           <button
             onClick={() => onSelect(entry.node.node_id)}
-            className="hover:underline transition-colors duration-150"
+            className="max-w-[12rem] truncate hover:underline transition-colors duration-150 sm:max-w-none"
             style={{
               fontFamily: entry.collapsedCount > 1 ? "var(--font-playfair), serif" : "inherit",
               fontStyle: entry.collapsedCount > 1 ? "italic" : "normal",

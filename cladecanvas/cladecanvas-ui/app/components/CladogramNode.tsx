@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { TreeNode } from "../lib/api";
+import type { LabelSide } from "../lib/tree-layout";
 
 type Props = {
   node: TreeNode;
@@ -11,6 +12,9 @@ type Props = {
   column: "parent" | "sibling" | "selected" | "child";
   onClick: () => void;
   animationDelay?: number;
+  compact?: boolean;
+  vertical?: boolean;
+  labelSide?: LabelSide;
 };
 
 const NODE_RADIUS = 6;
@@ -24,15 +28,25 @@ export default function CladogramNode({
   column,
   onClick,
   animationDelay = 0,
+  compact = false,
+  vertical = false,
+  labelSide,
 }: Props) {
   const radius = isSelected ? SELECTED_RADIUS : NODE_RADIUS;
-
-  // Label positioning: parent and sibling labels go LEFT, selected and children go RIGHT
-  const labelsGoLeft = column === "parent" || column === "sibling";
-  const labelAnchor = labelsGoLeft ? "end" : "start";
-  const labelDx = labelsGoLeft ? -(radius + 8) : radius + 8;
-
+  const resolvedLabelSide = labelSide ?? (column === "parent" || column === "sibling" ? "left" : "right");
+  const labelAnchor =
+    resolvedLabelSide === "center" ? "middle" : resolvedLabelSide === "left" ? "end" : "start";
+  const labelDx =
+    resolvedLabelSide === "center" ? 0 : resolvedLabelSide === "left" ? -(radius + 8) : radius + 8;
+  const centerLabelAbove = vertical && resolvedLabelSide === "center" && column === "parent";
+  const labelY = centerLabelAbove ? y - 16 : y - 4;
+  const speciesY = centerLabelAbove ? y - 3 : y + 12;
   const displayName = node.display_name || node.name;
+  const maxLabelChars = compact ? (isSelected ? 16 : 15) : 20;
+  const label =
+    displayName.length > maxLabelChars
+      ? displayName.slice(0, maxLabelChars - 2) + "..."
+      : displayName;
 
   return (
     <motion.g
@@ -48,10 +62,8 @@ export default function CladogramNode({
       style={{ cursor: "pointer" }}
       onClick={onClick}
     >
-      {/* Hit area — larger invisible circle for easier clicking */}
       <circle cx={x} cy={y} r={Math.max(radius + 8, 20)} fill="transparent" />
 
-      {/* Gold ring for selected node */}
       {isSelected && (
         <motion.circle
           cx={x}
@@ -66,7 +78,6 @@ export default function CladogramNode({
         />
       )}
 
-      {/* Node circle */}
       <motion.circle
         cx={x}
         cy={y}
@@ -76,31 +87,29 @@ export default function CladogramNode({
         transition={{ duration: 0.15 }}
       />
 
-      {/* Labels */}
       <text
         x={x + labelDx}
-        y={y - 4}
+        y={labelY}
         textAnchor={labelAnchor}
         style={{
           fontFamily: "var(--font-playfair), serif",
           fontStyle: "italic",
-          fontSize: isSelected ? 13 : 11,
+          fontSize: isSelected ? (compact ? 12 : 13) : compact ? 10 : 11,
           fontWeight: isSelected ? 600 : 400,
           fill: isSelected ? "var(--color-ink)" : "var(--clade-branch)",
         }}
       >
-        {displayName.length > 20 ? displayName.slice(0, 18) + "…" : displayName}
+        {label}
       </text>
 
-      {/* Species count */}
       {node.num_tips != null && (
         <text
           x={x + labelDx}
-          y={y + 12}
+          y={speciesY}
           textAnchor={labelAnchor}
           style={{
             fontFamily: "var(--font-inter), sans-serif",
-            fontSize: 9,
+            fontSize: compact ? 8 : 9,
             fill: "var(--color-ink-muted)",
             opacity: 0.7,
           }}
