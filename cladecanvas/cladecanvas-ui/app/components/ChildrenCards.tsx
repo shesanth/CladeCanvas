@@ -25,12 +25,12 @@ export default function ChildrenCards({ nodes, onSelect }: Props) {
       >
         Notable children
       </h3>
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin snap-x snap-mandatory">
+      <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-thin snap-x snap-mandatory sm:mx-0 sm:px-0">
         {visible.map((node) => (
           <button
             key={node.node_id}
             onClick={() => onSelect(node.node_id)}
-            className="flex-shrink-0 snap-start rounded-lg p-3 text-left transition-all duration-200 hover:-translate-y-0.5 w-36"
+            className="flex-shrink-0 snap-start rounded-lg p-3 text-left transition-all duration-200 hover:-translate-y-0.5 w-40 sm:w-36"
             style={{
               background: "var(--color-paper)",
               border: "1px solid var(--color-border)",

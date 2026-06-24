@@ -100,7 +100,7 @@ export default function SearchBar({ onSelect }: Props) {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-md">
+    <div ref={containerRef} className="relative w-full sm:max-w-md">
       <input
         type="text"
         value={query}
@@ -108,7 +108,7 @@ export default function SearchBar({ onSelect }: Props) {
         onKeyDown={handleKeyDown}
         onFocus={() => results.length > 0 && setIsOpen(true)}
         placeholder="Search clades or species…"
-        className="w-full px-4 py-2 rounded-lg text-sm"
+        className="w-full px-4 py-2.5 sm:py-2 rounded-lg text-base sm:text-sm"
         style={{
           background: "var(--color-paper-light)",
           border: "1px solid var(--color-border)",
@@ -119,7 +119,7 @@ export default function SearchBar({ onSelect }: Props) {
 
       {isOpen && (
         <div
-          className="absolute z-50 w-full mt-1 rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto"
+          className="absolute z-50 w-full mt-1 rounded-lg shadow-lg overflow-hidden max-h-[70vh] sm:max-h-80 overflow-y-auto"
           style={{
             background: "var(--color-paper-light)",
             border: "1px solid var(--color-border)",
@@ -138,7 +138,7 @@ export default function SearchBar({ onSelect }: Props) {
               key={result.node_id}
               onClick={() => selectResult(result)}
               onMouseEnter={() => setActiveIndex(idx)}
-              className="px-4 py-2.5 cursor-pointer transition-colors duration-100"
+              className="px-4 py-3 sm:py-2.5 cursor-pointer transition-colors duration-100"
               style={{
                 background:
                   idx === activeIndex
@@ -146,9 +146,9 @@ export default function SearchBar({ onSelect }: Props) {
                     : "transparent",
               }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span
-                  className="font-medium text-sm"
+                  className="min-w-0 truncate font-medium text-sm"
                   style={{ color: "var(--color-ink)" }}
                 >
                   {result.common_name || result.node_id}

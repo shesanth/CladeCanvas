@@ -187,13 +187,13 @@ function ExplorerPage() {
 
   return (
     <main
-      className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 min-h-screen"
+      className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 min-h-screen"
       style={{ color: "var(--color-ink)" }}
     >
       {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
         <h1
-          className="text-3xl font-bold tracking-tight"
+          className="text-2xl sm:text-3xl font-bold tracking-tight"
           style={{ fontFamily: "var(--font-playfair), serif" }}
         >
           CladeCanvas
@@ -213,7 +213,7 @@ function ExplorerPage() {
         onModeChange={onModeChange}
       />
 
-      <div className="flex items-start gap-4">
+      <div className="explorer-layout">
         {navigationMode === "overview" && (
           <ContextOverviewRail
             graph={contextGraph}

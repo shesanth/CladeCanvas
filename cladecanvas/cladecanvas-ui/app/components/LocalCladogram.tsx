@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TreeNode } from "../lib/api";
 import { computeLayout, type BranchPath } from "../lib/tree-layout";
@@ -14,6 +14,20 @@ type Props = {
   onSelect: (nodeId: string) => void;
 };
 
+type DisplayMode = "full" | "compact" | "vertical";
+
+function getDisplayMode(): DisplayMode {
+  if (typeof window === "undefined") return "full";
+  const isPhoneWidth = window.matchMedia("(max-width: 639px)").matches;
+  const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+  const isShortLandscape =
+    window.matchMedia("(max-height: 479px)").matches && !isPortrait;
+
+  if (isPhoneWidth && isPortrait) return "vertical";
+  if (isPhoneWidth || isShortLandscape) return "compact";
+  return "full";
+}
+
 export default function LocalCladogram({
   parent,
   siblings,
@@ -26,8 +40,32 @@ export default function LocalCladogram({
   );
   const rippleCounter = useRef(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(getDisplayMode);
 
-  const layout = computeLayout(parent, siblings, selected, childNodes);
+  useEffect(() => {
+    const phoneMedia = window.matchMedia("(max-width: 639px)");
+    const portraitMedia = window.matchMedia("(orientation: portrait)");
+    const shortMedia = window.matchMedia("(max-height: 479px)");
+    const update = () => setDisplayMode(getDisplayMode());
+    update();
+    phoneMedia.addEventListener("change", update);
+    portraitMedia.addEventListener("change", update);
+    shortMedia.addEventListener("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      phoneMedia.removeEventListener("change", update);
+      portraitMedia.removeEventListener("change", update);
+      shortMedia.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  const isVertical = displayMode === "vertical";
+  const isCompact = displayMode !== "full";
+  const layout = computeLayout(parent, siblings, selected, childNodes, {
+    compact: isCompact,
+    orientation: isVertical ? "vertical" : "horizontal",
+  });
   const { nodes, paths, width, height, overflowSiblings, overflowChildren } = layout;
 
   const handleNodeClick = useCallback(
@@ -46,29 +84,29 @@ export default function LocalCladogram({
     [selected.node_id, onSelect, isTransitioning]
   );
 
-  const svgHeight = Math.max(height, 200);
+  const svgHeight = Math.max(height, isVertical ? 220 : isCompact ? 180 : 200);
 
   return (
     <div
-      className="w-full max-w-4xl mx-auto overflow-x-auto my-4 rounded-xl"
+      className="w-[calc(100%+1.5rem)] -mx-3 sm:mx-auto sm:w-full max-w-4xl overflow-x-auto my-3 sm:my-4 rounded-none sm:rounded-xl touch-pan-x"
+      data-cladogram-mode={displayMode}
       style={{ background: "var(--color-paper-light)" }}
     >
       <svg
-        width="100%"
+        width={width}
         height={svgHeight}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMid meet"
+        className={isVertical ? "block mx-auto" : "block"}
       >
-        {/* Key the ENTIRE content on selected node so we get a clean swap */}
         <AnimatePresence>
           <motion.g
-            key={selected.node_id}
+            key={`${selected.node_id}-${displayMode}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {/* Branch paths */}
             {paths.map((path, idx) => (
               <BranchPathElement
                 key={`${path.fromId}-${path.toId}`}
@@ -77,7 +115,6 @@ export default function LocalCladogram({
               />
             ))}
 
-            {/* Nodes */}
             {nodes.map((layoutNode, idx) => (
               <CladogramNode
                 key={`${layoutNode.column}-${layoutNode.node.node_id}`}
@@ -86,6 +123,9 @@ export default function LocalCladogram({
                 y={layoutNode.y}
                 isSelected={layoutNode.isSelected}
                 column={layoutNode.column}
+                compact={isCompact}
+                vertical={isVertical}
+                labelSide={layoutNode.labelSide}
                 onClick={() =>
                   handleNodeClick(
                     layoutNode.node.node_id,
@@ -105,7 +145,6 @@ export default function LocalCladogram({
               />
             ))}
 
-            {/* Overflow indicators */}
             {overflowSiblings > 0 && (() => {
               const sibNode = nodes.find((n) => n.column === "sibling");
               return sibNode ? (
@@ -115,7 +154,7 @@ export default function LocalCladogram({
                   textAnchor="middle"
                   style={{
                     fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 10,
+                    fontSize: isCompact ? 9 : 10,
                     fill: "var(--color-ink-muted)",
                     fontStyle: "italic",
                   }}
@@ -133,7 +172,7 @@ export default function LocalCladogram({
                   textAnchor="middle"
                   style={{
                     fontFamily: "var(--font-inter), sans-serif",
-                    fontSize: 10,
+                    fontSize: isCompact ? 9 : 10,
                     fill: "var(--color-ink-muted)",
                     fontStyle: "italic",
                   }}
@@ -145,7 +184,6 @@ export default function LocalCladogram({
           </motion.g>
         </AnimatePresence>
 
-        {/* Ripple effect — outside the keyed group so it persists across transitions */}
         <AnimatePresence>
           {ripple && (
             <motion.circle
