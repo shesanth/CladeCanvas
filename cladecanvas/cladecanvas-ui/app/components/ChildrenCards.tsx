@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { TreeNode } from "../lib/api";
 import { score } from "../lib/scoring";
 
@@ -11,10 +12,16 @@ type Props = {
 const MAX_CARDS = 12;
 
 export default function ChildrenCards({ nodes, onSelect }: Props) {
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    setShowAll(false);
+  }, [nodes]);
+
   if (nodes.length === 0) return null;
 
   const sorted = [...nodes].sort((a, b) => score(b) - score(a));
-  const visible = sorted.slice(0, MAX_CARDS);
+  const visible = showAll ? sorted : sorted.slice(0, MAX_CARDS);
   const overflow = Math.max(0, sorted.length - MAX_CARDS);
 
   return (
@@ -76,19 +83,23 @@ export default function ChildrenCards({ nodes, onSelect }: Props) {
           </button>
         ))}
 
-        {overflow > 0 && (
-          <div
-            className="flex-shrink-0 snap-start rounded-lg p-3 flex items-center justify-center w-24"
+        {overflow > 0 && !showAll && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="flex-shrink-0 snap-start rounded-lg p-3 flex items-center justify-center w-24 transition-all duration-200 hover:-translate-y-0.5"
             style={{
               background: "var(--color-paper)",
               border: "1px dashed var(--color-border)",
               color: "var(--color-ink-muted)",
             }}
+            aria-label={`Show ${overflow} more children`}
           >
             <span className="text-sm font-medium">+{overflow} more</span>
-          </div>
+          </button>
         )}
       </div>
     </div>
   );
 }
+

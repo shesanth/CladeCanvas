@@ -23,18 +23,17 @@ export function score(node: TreeNode): number {
   return metadataScore + childScore + rankBoost + tipsBoost;
 }
 
-/** Filter out junk nodes (environmental samples, missing tip counts) */
+/** Filter out obvious junk without hiding valid clades that lack tip counts. */
 export function filterClean(nodes: TreeNode[]): TreeNode[] {
   const cleaned = nodes.filter(
     (n) =>
       typeof n.name === "string" &&
-      !n.name.toLowerCase().includes("environmental") &&
-      n.num_tips != null
+      !n.name.toLowerCase().includes("environmental")
   );
   return cleaned.length > 0 ? cleaned : nodes;
 }
 
-/** Deduplicate by node_id */
+/** Deduplicate by node_id. */
 function dedup(nodes: TreeNode[]): TreeNode[] {
   const seen = new Set<string>();
   return nodes.filter((n) => {
@@ -44,9 +43,12 @@ function dedup(nodes: TreeNode[]): TreeNode[] {
   });
 }
 
-/** Sort by score descending, truncate to limit */
+/** Sort by score descending. */
+export function sortByScore(nodes: TreeNode[]): TreeNode[] {
+  return dedup(filterClean(nodes)).sort((a, b) => score(b) - score(a));
+}
+
+/** Sort by score descending, truncate to limit. */
 export function topByScore(nodes: TreeNode[], limit: number): TreeNode[] {
-  return dedup(filterClean(nodes))
-    .sort((a, b) => score(b) - score(a))
-    .slice(0, limit);
+  return sortByScore(nodes).slice(0, limit);
 }

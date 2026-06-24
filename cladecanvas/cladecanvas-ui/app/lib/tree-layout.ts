@@ -32,6 +32,8 @@ export type BranchPath = {
 type LayoutOptions = {
   compact?: boolean;
   orientation?: "horizontal" | "vertical";
+  maxSiblings?: number;
+  maxChildren?: number;
 };
 
 function horizontalConstants(compact: boolean) {
@@ -102,7 +104,8 @@ function computeVerticalLayout(
   parent: TreeNode | null,
   siblings: TreeNode[],
   selected: TreeNode,
-  children: TreeNode[]
+  children: TreeNode[],
+  options: LayoutOptions = {}
 ): CladogramLayout {
   const {
     width,
@@ -116,9 +119,11 @@ function computeVerticalLayout(
     childRowGap,
     siblingGap,
     childGapX,
-    maxSiblings,
-    maxChildren,
+    maxSiblings: defaultMaxSiblings,
+    maxChildren: defaultMaxChildren,
   } = verticalConstants();
+  const maxSiblings = options.maxSiblings ?? defaultMaxSiblings;
+  const maxChildren = options.maxChildren ?? defaultMaxChildren;
   const nodes: LayoutNode[] = [];
   const paths: BranchPath[] = [];
   const visibleSiblings = siblings.slice(0, maxSiblings);
@@ -222,7 +227,8 @@ function computeHorizontalLayout(
   siblings: TreeNode[],
   selected: TreeNode,
   children: TreeNode[],
-  compact: boolean
+  compact: boolean,
+  options: LayoutOptions = {}
 ): CladogramLayout {
   const {
     rowHeight,
@@ -230,10 +236,12 @@ function computeHorizontalLayout(
     paddingX,
     parentLabelRoom,
     labelRoom,
-    maxSiblings,
-    maxChildren,
+    maxSiblings: defaultMaxSiblings,
+    maxChildren: defaultMaxChildren,
     colGap,
   } = horizontalConstants(compact);
+  const maxSiblings = options.maxSiblings ?? defaultMaxSiblings;
+  const maxChildren = options.maxChildren ?? defaultMaxChildren;
   const nodes: LayoutNode[] = [];
   const paths: BranchPath[] = [];
   const overflowSiblings = Math.max(0, siblings.length - maxSiblings);
@@ -375,7 +383,7 @@ export function computeLayout(
   options: LayoutOptions = {}
 ): CladogramLayout {
   if (options.orientation === "vertical") {
-    return computeVerticalLayout(parent, siblings, selected, children);
+    return computeVerticalLayout(parent, siblings, selected, children, options);
   }
 
   return computeHorizontalLayout(
@@ -383,6 +391,9 @@ export function computeLayout(
     siblings,
     selected,
     children,
-    Boolean(options.compact)
+    Boolean(options.compact),
+    options
   );
 }
+
+
